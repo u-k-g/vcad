@@ -151,7 +151,6 @@ function useThemeSync() {
     }
   }, [theme]);
 }
-
 async function syncNativeWindowTheme(theme: "light" | "dark") {
   try {
     const { isTauri } = await import("@/lib/tauri");
@@ -407,7 +406,11 @@ export function App() {
         const { openDocumentNative } = await import("@/lib/native-file");
         const picked = await openDocumentNative();
         if (!picked) return;
-        const pseudoFile = new File([picked.contents], picked.name);
+        const contents: BlobPart =
+          typeof picked.contents === "string"
+            ? picked.contents
+            : Uint8Array.from(picked.contents).buffer;
+        const pseudoFile = new File([contents], picked.name);
         await processFileRef.current?.(pseudoFile);
         return;
       }
@@ -438,6 +441,59 @@ export function App() {
       useChatStore.getState().queuePendingAttachments([file]);
       useChatStore.getState().setOpen(true);
       window.dispatchEvent(new Event("vcad:focus-chat-input"));
+      return;
+    }
+
+    const nativeReconstructionExtension =
+      ext === "brep" ||
+      ext === "brp" ||
+      ext === "step" ||
+      ext === "stp" ||
+      ext === "stl" ||
+      ext === "obj" ||
+      ext === "3mf";
+    const reconstructNativeCad =
+      nativeReconstructionExtension && (await import("@/lib/tauri")).isTauri();
+
+    // BREP/STEP geometry and supported watertight meshes are reverse-engineered
+    // into native Loon operations.
+    // The source file is neither retained nor embedded: supported solids
+    // become sketches, extrusions, and hole differences. Recognition is
+    // fail-closed, so unsupported geometry never silently becomes a mesh.
+    if (reconstructNativeCad) {
+      try {
+        const engine = useEngineStore.getState().engine;
+        if (!engine) {
+          useNotificationStore.getState().addToast("Engine not ready", "error");
+          return;
+        }
+        const buffer = await file.arrayBuffer();
+        const { reconstructCadToLoon } = await import("@/lib/brep-reconstruct");
+        const result = await runJob(
+          { verb: `Reconstructing ${file.name} as native Loon` },
+          () => reconstructCadToLoon(buffer, file.name),
+        );
+        const evalLoon = (source: string) => {
+          const document = engine.evalVcadSource(source);
+          if (!document) throw new Error("Loon evaluation is unavailable");
+          return JSON.stringify(document);
+        };
+        const vcadFile = parseVcadFile(result.loonSource, evalLoon);
+
+        await flushPendingSave();
+        useDocumentStore.getState().loadDocument(vcadFile);
+        useUiStore.getState().clearSelection();
+        useNotificationStore
+          .getState()
+          .addToast(
+            `Reconstructed ${result.faceCount} source faces as ${result.layers} native Loon extrusion layers (${result.axis.toUpperCase()} axis)`,
+            "success",
+          );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to reconstruct CAD/mesh source:", err);
+        useNotificationStore.getState().addToast(message, "error");
+      }
       return;
     }
 
@@ -1159,7 +1215,7 @@ export function App() {
         <div className="mt-1 text-sm text-text-muted">
           {isDraggingImage
             ? "I'll attach it to chat — describe what you want me to build"
-            : ".vcad, .loon, .stl, .step, .urdf, .pes, .dst"}
+            : ".vcad, .loon, .brep, .step, .stl, .obj, .3mf, .urdf, .pes, .dst"}
         </div>
       </div>
     </div>
@@ -1253,7 +1309,7 @@ export function App() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".vcad,.loon,.json,.step,.stp,.stl,.urdf,.pes,.dst,.kicad_pcb"
+          accept=".vcad,.loon,.json,.brep,.brp,.step,.stp,.stl,.obj,.3mf,.urdf,.pes,.dst,.kicad_pcb"
           className="hidden"
           onChange={handleFileChange}
         />

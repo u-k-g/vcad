@@ -398,6 +398,7 @@ function getPartIcon(part: PartInfo): typeof Cube {
   if (part.kind === "sweep") return Spiral;
   if (part.kind === "loft") return Stack;
   if (part.kind === "imported-mesh") return Package;
+  if (part.kind === "step-import") return Package;
   if (part.kind === "fillet") return Circle;
   if (part.kind === "chamfer") return Octagon;
   if (part.kind === "shell") return CubeTransparent;

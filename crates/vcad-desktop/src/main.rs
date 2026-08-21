@@ -6,7 +6,7 @@ mod platform;
 
 use tauri::Manager;
 
-use commands::{bambu, codex, context_menu, local_ai};
+use commands::{bambu, brep, codex, context_menu, local_ai};
 
 /// Closes the native splashscreen window and reveals the main window.
 ///
@@ -77,6 +77,7 @@ fn main() {
             codex::codex_auth_status,
             codex::codex_chat_stream,
             codex::codex_chat_cancel,
+            brep::reconstruct_cad_to_loon,
             menu::set_menu_enabled,
             context_menu::show_context_menu,
             platform::set_document_edited,

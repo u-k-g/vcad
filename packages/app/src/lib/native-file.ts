@@ -79,27 +79,42 @@ export async function saveDocumentNative(
 }
 
 /**
- * Show a native open dialog, read the picked file's text contents, record
+ * Show a native open dialog, read the picked file's contents, record
  * the path in recents, and return `{ path, contents }`. Returns null on
  * cancel or outside Tauri.
  */
-export async function openDocumentNative(): Promise<
-  { path: string; contents: string; name: string } | null
-> {
+export async function openDocumentNative(): Promise<{
+  path: string;
+  contents: string | Uint8Array;
+  name: string;
+} | null> {
   if (!isTauri()) return null;
   const { open } = await import("@tauri-apps/plugin-dialog");
-  const { readTextFile } = await import("@tauri-apps/plugin-fs");
+  const { readFile, readTextFile } = await import("@tauri-apps/plugin-fs");
   const picked = await open({
     multiple: false,
     directory: false,
     filters: [
       { name: "vcad", extensions: ["vcad", "loon", "json"] },
       { name: "STEP", extensions: ["step", "stp"] },
+      { name: "OpenCASCADE BREP", extensions: ["brep", "brp"] },
       { name: "STL", extensions: ["stl"] },
+      { name: "Wavefront OBJ", extensions: ["obj"] },
+      { name: "3MF", extensions: ["3mf"] },
     ],
   });
   if (!picked || typeof picked !== "string") return null;
-  const contents = await readTextFile(picked);
+  const extension = picked.split(".").pop()?.toLowerCase();
+  const contents =
+    extension === "brep" ||
+    extension === "brp" ||
+    extension === "step" ||
+    extension === "stp" ||
+    extension === "stl" ||
+    extension === "obj" ||
+    extension === "3mf"
+      ? await readFile(picked)
+      : await readTextFile(picked);
   addRecentFile(picked);
   const name = picked.split("/").pop() ?? picked;
   return { path: picked, contents, name };
@@ -108,11 +123,21 @@ export async function openDocumentNative(): Promise<
 /** Read a file at a previously-recorded path (e.g. from the recents list). */
 export async function readDocumentAtPath(
   path: string,
-): Promise<{ contents: string; name: string } | null> {
+): Promise<{ contents: string | Uint8Array; name: string } | null> {
   if (!isTauri()) return null;
   try {
-    const { readTextFile } = await import("@tauri-apps/plugin-fs");
-    const contents = await readTextFile(path);
+    const { readFile, readTextFile } = await import("@tauri-apps/plugin-fs");
+    const extension = path.split(".").pop()?.toLowerCase();
+    const contents =
+      extension === "brep" ||
+      extension === "brp" ||
+      extension === "step" ||
+      extension === "stp" ||
+      extension === "stl" ||
+      extension === "obj" ||
+      extension === "3mf"
+        ? await readFile(path)
+        : await readTextFile(path);
     const name = path.split("/").pop() ?? path;
     return { contents, name };
   } catch (err) {

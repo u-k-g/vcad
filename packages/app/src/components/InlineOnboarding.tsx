@@ -26,7 +26,6 @@ import { analytics } from "@/lib/analytics";
 interface InlineOnboardingProps {
   visible: boolean;
 }
-
 /** Icon + accent color per example. Falls back to a cube if unknown. */
 const EXAMPLE_ICONS: Record<string, { Icon: Icon; color: string }> = {
   plate: { Icon: Square, color: "text-[#94A3B8]" },
@@ -191,7 +190,7 @@ export function InlineOnboarding({ visible }: InlineOnboardingProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".vcad,.loon,.json,.step,.stp,.stl"
+          accept=".vcad,.loon,.json,.brep,.brp,.step,.stp,.stl,.obj,.3mf"
           onChange={handleFileChange}
           className="hidden"
         />
@@ -350,7 +349,7 @@ export function InlineOnboarding({ visible }: InlineOnboardingProps) {
           <ActionButton
             icon={FolderOpen}
             label="Open file"
-            hint=".vcad, .step, .stl"
+            hint=".vcad, .brep, .step, .stl, .obj, .3mf"
             onClick={handleOpenFile}
           />
         </div>

@@ -48,7 +48,11 @@ export function RecentFilesModal() {
       return;
     }
     // Hand back to the main pipeline as if the user had dropped this file.
-    const pseudo = new File([result.contents], result.name);
+    const fileContents =
+      typeof result.contents === "string"
+        ? result.contents
+        : Uint8Array.from(result.contents).buffer;
+    const pseudo = new File([fileContents], result.name);
     window.dispatchEvent(
       new CustomEvent("vcad:open-recent-file", { detail: { file: pseudo } }),
     );
