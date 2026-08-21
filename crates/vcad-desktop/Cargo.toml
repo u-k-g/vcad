@@ -34,6 +34,8 @@ vcad-slicer-bambu = { path = "../vcad-slicer-bambu" }
 vcad-i18n = { path = "../vcad-i18n" }
 tokio = { version = "1", features = ["sync", "rt-multi-thread", "macros", "time"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+url = "2"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 window-vibrancy = "0.6"

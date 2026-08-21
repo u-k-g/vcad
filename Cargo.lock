@@ -7001,6 +7001,7 @@ name = "vcad-desktop"
 version = "0.9.4"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "cocoa",
  "objc",
  "reqwest 0.12.28",
@@ -7016,6 +7017,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
  "tokio",
+ "url",
  "vcad-i18n",
  "vcad-slicer-bambu",
  "window-vibrancy",

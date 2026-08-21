@@ -6,7 +6,7 @@ mod platform;
 
 use tauri::Manager;
 
-use commands::{bambu, context_menu, local_ai};
+use commands::{bambu, codex, context_menu, local_ai};
 
 /// Closes the native splashscreen window and reveals the main window.
 ///
@@ -36,6 +36,7 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .manage(bambu::BambuState::new())
+        .manage(codex::CodexState::new())
         .setup(|app| {
             // macOS: activate the app so the window actually appears
             // (raw binaries launched from terminal aren't auto-activated)
@@ -73,6 +74,9 @@ fn main() {
             bambu::bambu_control,
             local_ai::local_ai_probe,
             local_ai::local_ai_chat_stream,
+            codex::codex_auth_status,
+            codex::codex_chat_stream,
+            codex::codex_chat_cancel,
             menu::set_menu_enabled,
             context_menu::show_context_menu,
             platform::set_document_edited,

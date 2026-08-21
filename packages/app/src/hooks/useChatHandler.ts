@@ -15,6 +15,7 @@ import type { SelectionContext, ToolCallInfo, MessagePart, ExecutionResult, Chat
 import { persistToolResult, useAuthStore } from "@vcad/auth";
 import { streamChat, LIMIT_ERROR_PREFIX } from "@/lib/chat-api";
 import type { ToolCall, ChatRequestMessage } from "@/lib/chat-api";
+import { isTauri } from "@/lib/tauri";
 import {
   SCREENSHOT_VIEWPORT_TOOL,
   SCREENSHOT_SYSTEM_PROMPT_APPENDIX,
@@ -242,10 +243,16 @@ function runTurn(
     parentMessageId: string | null;
     assistantMessageId: string | null;
   },
-): Promise<{ text: string; toolCalls: ToolCall[]; error: string | null }> {
+): Promise<{
+  text: string;
+  toolCalls: ToolCall[];
+  providerItems: Record<string, unknown>[];
+  error: string | null;
+}> {
   return new Promise((resolve) => {
     let text = "";
     const toolCalls: ToolCall[] = [];
+    const providerItems: Record<string, unknown>[] = [];
     let error: string | null = null;
 
     const tools = [
@@ -267,8 +274,9 @@ function runTurn(
     streamChat(history, context, {
       onText: (t) => { text = t; onStreamText(t); },
       onToolCall: (tool) => { toolCalls.push(tool); },
+      onProviderItem: (item) => { providerItems.push(item); },
       onError: (err) => { error = err; },
-      onFinish: () => { resolve({ text, toolCalls, error }); },
+      onFinish: () => { resolve({ text, toolCalls, providerItems, error }); },
       onMeta,
       onUsage: (u) => {
         if (typeof u.anonUsed === "number") {
@@ -300,6 +308,7 @@ export function useChatHandler() {
       attachments?: ChatAttachment[],
     ) => {
       const store = useChatStore.getState();
+      const usesCodexSubscription = isTauri();
 
       const session = useAuthStore.getState().session;
       const isAnonymous = useAuthStore.getState().isAnonymous;
@@ -328,7 +337,7 @@ export function useChatHandler() {
       // is misconfigured (e.g. missing SUPABASE_SERVICE_ROLE_KEY in prod).
       // The server is still the source of truth for the limit, but this
       // keeps the client honest even when auth isn't configured at all.
-      if (isAnon && store.anonUsage.used >= store.anonUsage.limit) {
+      if (!usesCodexSubscription && isAnon && store.anonUsage.used >= store.anonUsage.limit) {
         store.setUsageError({
           kind: "anon_limit",
           message: `You've used your ${store.anonUsage.limit.toLocaleString()} free trial tokens. Sign in for more.`,
@@ -340,11 +349,11 @@ export function useChatHandler() {
 
       // If a previous request already reported a limit error, don't retry —
       // the server will just 429 again.
-      if (isAnon && store.usageError?.kind === "anon_limit") {
+      if (!usesCodexSubscription && isAnon && store.usageError?.kind === "anon_limit") {
         // The sidebar will handle opening the auth modal for this case.
         return;
       }
-      if (!isAnon && store.usageError?.kind === "monthly_limit") {
+      if (!usesCodexSubscription && !isAnon && store.usageError?.kind === "monthly_limit") {
         // Banner is already shown; nothing to do.
         return;
       }
@@ -448,7 +457,7 @@ export function useChatHandler() {
             break;
           }
           // Stream a turn — text gets appended to the current text part
-          const { text, toolCalls, error } = await runTurn(
+          const { text, toolCalls, providerItems, error } = await runTurn(
             history,
             context,
             (streamedText) => {
@@ -626,7 +635,7 @@ export function useChatHandler() {
           // persist doesn't block the in-memory loop. Skip when there's no
           // thread (Supabase unconfigured) — the server wouldn't have
           // written the tool_call row anyway.
-          if (threadId) {
+          if (!usesCodexSubscription && threadId) {
             for (const entry of accumulatedToolCalls) {
               if (entry.status === "pending") continue;
               if (entry.result === undefined) continue;
@@ -674,7 +683,11 @@ export function useChatHandler() {
               input: tool.args,
             });
           }
-          history.push({ role: "assistant", content: assistantContent });
+          history.push({
+            role: "assistant",
+            content: assistantContent,
+            ...(providerItems.length > 0 ? { providerItems } : {}),
+          });
 
           const userContent = toolResults.map((r) => ({
             type: "tool_result",

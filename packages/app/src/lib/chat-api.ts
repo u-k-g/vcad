@@ -1,5 +1,6 @@
 import type { SelectionContext, AnthropicTool } from "@vcad/core";
 import { getSupabase, useAuthStore } from "@vcad/auth";
+import { isTauri } from "@/lib/tauri";
 
 /**
  * Prefix used to signal a rate-limit error payload to the chat handler.
@@ -41,6 +42,9 @@ function authHeaders(): Record<string, string> {
 export interface ChatRequestMessage {
   role: "user" | "assistant";
   content: string | object[];
+  /** Opaque Responses API items (currently encrypted Codex reasoning) that
+   * must be replayed with a later function result. Never rendered in VCAD. */
+  providerItems?: Record<string, unknown>[];
 }
 
 export interface ToolCall {
@@ -52,6 +56,8 @@ export interface ToolCall {
 export interface ChatStreamCallbacks {
   onText: (text: string) => void;
   onToolCall: (tool: ToolCall) => void;
+  /** Provider-specific opaque state needed to continue a tool-call turn. */
+  onProviderItem?: (item: Record<string, unknown>) => void;
   onError: (error: string) => void;
   onFinish: () => void;
   /** Server-side persistence echoes the message id assigned to the
@@ -90,6 +96,21 @@ export async function streamChat(
     assistantMessageId?: string | null;
   },
 ): Promise<void> {
+  // Desktop builds use the user's existing Codex CLI / ChatGPT subscription.
+  // Everything above this transport seam remains VCAD-owned: prompt, tools,
+  // history, execution, UI, and undo/redo. Browser builds retain the hosted
+  // VCAD endpoint.
+  if (isTauri()) {
+    const { streamCodexChat } = await import("@/lib/codex-chat");
+    await streamCodexChat(messages, callbacks, {
+      tools: options?.tools,
+      systemPrompt: options?.systemPrompt,
+      signal: options?.signal,
+      sessionId: options?.threadId ?? options?.documentId,
+    });
+    return;
+  }
+
   const selectedParts = context.map((c) => ({
     partId: c.partId,
     partName: c.partName,

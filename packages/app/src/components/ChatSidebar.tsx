@@ -43,6 +43,8 @@ import { VcadToolCard } from "@/components/chat/VcadToolCard";
 import { CadSuggestions } from "@/components/chat/CadSuggestions";
 import { UpgradeModal } from "@/components/UpgradeModal";
 import { captureViewportAsFile, downscaleImageDataUrl } from "@/lib/ai-screenshot";
+import { getCodexAuthStatus, type CodexAuthStatus } from "@/lib/codex-chat";
+import { isTauri } from "@/lib/tauri";
 
 // ---------------------------------------------------------------------------
 // Attach-viewport button — grabs the current 3D viewport canvas as a JPEG
@@ -557,6 +559,7 @@ function SourcePanel() {
 type SidebarTab = "chat" | "source";
 
 export function ChatSidebar() {
+  const usesCodexSubscription = isTauri();
   const messages = useChatStore((s) => s.messages);
   const streaming = useChatStore((s) => s.streaming);
   const setOpen = useChatStore((s) => s.setOpen);
@@ -582,8 +585,20 @@ export function ChatSidebar() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [codexStatus, setCodexStatus] = useState<CodexAuthStatus | null>(null);
   const dragDepthRef = useRef(0);
   const inputWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!usesCodexSubscription) return;
+    let alive = true;
+    getCodexAuthStatus().then((status) => {
+      if (alive) setCodexStatus(status);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [usesCodexSubscription]);
 
   // Whole-pane image drop. PromptInput already handles drops on its own form,
   // so we forward only drops that land outside the input wrap (messages area,
@@ -653,12 +668,13 @@ export function ChatSidebar() {
   // as anonymous on the server (typically a stale token), and popping the
   // sign-in modal at that point would be both confusing and useless.
   useEffect(() => {
+    if (usesCodexSubscription) return;
     if (usageError?.kind === "anon_limit" && !isAuthenticated) {
       setShowAuthModal(true);
     } else if (usageError?.kind === "monthly_limit") {
       setShowUpgradeModal(true);
     }
-  }, [usageError, isAuthenticated]);
+  }, [usageError, isAuthenticated, usesCodexSubscription]);
 
   const sendMessage = useCallback(
     (content: string, attachments?: ChatAttachment[]) => {
@@ -774,6 +790,21 @@ export function ChatSidebar() {
           Source
         </button>
         <div className="flex-1" />
+        {activeTab === "chat" && codexStatus && (
+          <span
+            className={cn(
+              "px-1.5 text-[9px] uppercase tracking-wider",
+              codexStatus.loggedIn ? "text-emerald-500" : "text-warning",
+            )}
+            title={
+              codexStatus.loggedIn
+                ? "Using your local Codex CLI ChatGPT subscription"
+                : codexStatus.message ?? "Run codex login to enable Codex"
+            }
+          >
+            {codexStatus.loggedIn ? "Codex" : "Codex login"}
+          </span>
+        )}
         {activeTab === "chat" && (
           <Tooltip content="New thread" side="bottom">
             <button
@@ -823,7 +854,7 @@ export function ChatSidebar() {
               keeps a signed-in user from seeing "Free chat limit reached"
               if a stale-token request gets routed to the anon rate limit
               before the auto-refresh kicks in. */}
-          {usageError?.kind === "anon_limit" && !isAuthenticated && (
+          {!usesCodexSubscription && usageError?.kind === "anon_limit" && !isAuthenticated && (
             <div className="shrink-0 bg-brand/10 px-4 py-2 text-[10px] text-text">
               <div className="mb-0.5 font-semibold text-brand">Free trial limit reached</div>
               <div className="text-text-muted">{usageError.message}</div>
@@ -835,7 +866,7 @@ export function ChatSidebar() {
               </button>
             </div>
           )}
-          {!isAuthenticated && anonUsage.used > 0 && !usageError && (
+          {!usesCodexSubscription && !isAuthenticated && anonUsage.used > 0 && !usageError && (
             <AnonTrialBar used={anonUsage.used} limit={anonUsage.limit} />
           )}
 
