@@ -25,6 +25,12 @@ struct ReconstructionReport {
     reconstructed_volume: f64,
     relative_volume_error: f64,
     face_count: usize,
+    output_parts: usize,
+    decimal_places: u8,
+    simplification_tolerance: f64,
+    input_segments: usize,
+    output_segments: usize,
+    recovered_arcs: usize,
 }
 
 #[derive(Serialize)]
@@ -37,6 +43,12 @@ pub struct CadLoonResult {
     reconstructed_volume: f64,
     relative_volume_error: f64,
     face_count: usize,
+    output_parts: usize,
+    decimal_places: u8,
+    simplification_tolerance: f64,
+    input_segments: usize,
+    output_segments: usize,
+    recovered_arcs: usize,
 }
 
 fn freecad_resource_dir() -> Result<PathBuf, String> {
@@ -88,6 +100,8 @@ pub async fn reconstruct_cad_to_loon(
     app: tauri::AppHandle,
     data_base64: String,
     source_name: String,
+    decimal_places: u8,
+    simplification_tolerance: f64,
 ) -> Result<CadLoonResult, String> {
     let data = base64::engine::general_purpose::STANDARD
         .decode(data_base64)
@@ -103,6 +117,16 @@ pub async fn reconstruct_cad_to_loon(
     }
     if source_name.len() > 512 {
         return Err("source filename is too long".to_string());
+    }
+    if decimal_places > 8 {
+        return Err("numeric precision must be between 0 and 8 decimal places".to_string());
+    }
+    if !simplification_tolerance.is_finite()
+        || !(0.000_001..=1.0).contains(&simplification_tolerance)
+    {
+        return Err(
+            "simplification tolerance must be between 0.000001 and 1.0 model units".to_string(),
+        );
     }
 
     let resource_dir = freecad_resource_dir()?;
@@ -154,6 +178,14 @@ pub async fn reconstruct_cad_to_loon(
             .env("VCAD_MESH_TO_LOON_OUTPUT", loon_value)
             .env("VCAD_MESH_TO_LOON_REPORT", report_value)
             .env("VCAD_MESH_TO_LOON_SOURCE_NAME", source_name)
+            .env(
+                "VCAD_MESH_TO_LOON_DECIMAL_PLACES",
+                decimal_places.to_string(),
+            )
+            .env(
+                "VCAD_MESH_TO_LOON_SIMPLIFICATION_TOLERANCE",
+                simplification_tolerance.to_string(),
+            )
             .output()
     })
     .await
@@ -207,6 +239,12 @@ pub async fn reconstruct_cad_to_loon(
         reconstructed_volume: report.reconstructed_volume,
         relative_volume_error: report.relative_volume_error,
         face_count: report.face_count,
+        output_parts: report.output_parts,
+        decimal_places: report.decimal_places,
+        simplification_tolerance: report.simplification_tolerance,
+        input_segments: report.input_segments,
+        output_segments: report.output_segments,
+        recovered_arcs: report.recovered_arcs,
     })
 }
 

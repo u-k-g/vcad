@@ -22,6 +22,8 @@ import sys
 
 
 TOL = 1.0e-6
+DEFAULT_DECIMAL_PLACES = 4
+DEFAULT_SIMPLIFICATION_TOLERANCE = 0.01
 MESH_EXTENSIONS = {".stl", ".obj", ".3mf"}
 SUPPORTED_EXTENSIONS = MESH_EXTENSIONS | {".brep", ".brp", ".step", ".stp"}
 
@@ -32,6 +34,18 @@ def arguments(raw=None):
     parser.add_argument("output", help="destination .loon file")
     parser.add_argument("--report", help="optional JSON fidelity report")
     parser.add_argument("--source-name", help="display name written to the Loon header")
+    parser.add_argument(
+        "--decimal-places",
+        type=int,
+        default=DEFAULT_DECIMAL_PLACES,
+        help="decimal places written to Loon (0-8; default: 4)",
+    )
+    parser.add_argument(
+        "--simplification-tolerance",
+        type=float,
+        default=DEFAULT_SIMPLIFICATION_TOLERANCE,
+        help="maximum contour deviation in model units (default: 0.01)",
+    )
     return parser.parse_args(raw)
 
 
@@ -56,6 +70,10 @@ except ImportError:
         "VCAD_MESH_TO_LOON_SOURCE": os.path.abspath(args.source),
         "VCAD_MESH_TO_LOON_OUTPUT": os.path.abspath(args.output),
         "VCAD_MESH_TO_LOON_SOURCE_NAME": args.source_name or os.path.basename(args.source),
+        "VCAD_MESH_TO_LOON_DECIMAL_PLACES": str(args.decimal_places),
+        "VCAD_MESH_TO_LOON_SIMPLIFICATION_TOLERANCE": str(
+            args.simplification_tolerance
+        ),
     })
     if args.report:
         child_env["VCAD_MESH_TO_LOON_REPORT"] = os.path.abspath(args.report)
@@ -86,6 +104,19 @@ report_value = os.environ.get("VCAD_MESH_TO_LOON_REPORT")
 report_path = os.path.abspath(report_value) if report_value else None
 source_name = os.environ.get("VCAD_MESH_TO_LOON_SOURCE_NAME", os.path.basename(source_path))
 source_name = source_name.replace("\n", " ").replace("\r", " ")
+decimal_places = int(
+    os.environ.get("VCAD_MESH_TO_LOON_DECIMAL_PLACES", DEFAULT_DECIMAL_PLACES)
+)
+simplification_tolerance = float(
+    os.environ.get(
+        "VCAD_MESH_TO_LOON_SIMPLIFICATION_TOLERANCE",
+        DEFAULT_SIMPLIFICATION_TOLERANCE,
+    )
+)
+if decimal_places < 0 or decimal_places > 8:
+    raise RuntimeError("decimal places must be between 0 and 8")
+if not math.isfinite(simplification_tolerance) or not 1.0e-6 <= simplification_tolerance <= 1.0:
+    raise RuntimeError("simplification tolerance must be between 0.000001 and 1.0")
 source_extension = os.path.splitext(source_path)[1].lower()
 if source_extension not in SUPPORTED_EXTENSIONS:
     raise RuntimeError("unsupported input format: " + source_extension)
@@ -165,9 +196,13 @@ if len(levels) < 2:
 
 
 def fmt(value):
-    if abs(value) < 5.0e-10:
+    zero_threshold = 0.5 * (10.0 ** -decimal_places) if decimal_places else 0.5
+    if abs(value) < zero_threshold:
         value = 0.0
-    return format(value, ".10g")
+    text = format(value, f".{decimal_places}f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return "0" if text == "-0" else text
 
 
 def point2(vector):
@@ -243,14 +278,7 @@ def containment_depth(index, faces):
     return depth
 
 
-def recover_dense_circle(segments):
-    """Replace a densely tessellated circular loop with two native arcs."""
-    if len(segments) < 32 or any(segment[0] != "line" for segment in segments):
-        return None
-    points = [segment[1] for segment in segments]
-    a = points[0]
-    b = points[len(points) // 3]
-    c = points[(2 * len(points)) // 3]
+def circle_from_three(a, b, c):
     determinant = 2.0 * (
         a[0] * (b[1] - c[1])
         + b[0] * (c[1] - a[1])
@@ -261,7 +289,7 @@ def recover_dense_circle(segments):
     a_squared = a[0] * a[0] + a[1] * a[1]
     b_squared = b[0] * b[0] + b[1] * b[1]
     c_squared = c[0] * c[0] + c[1] * c[1]
-    center = (
+    return (
         (
             a_squared * (b[1] - c[1])
             + b_squared * (c[1] - a[1])
@@ -275,10 +303,52 @@ def recover_dense_circle(segments):
         )
         / determinant,
     )
+
+
+def circle_fit(points):
+    """Return (center, radius, polyline-to-circle error) for an arc candidate."""
+    if math.hypot(points[0][0] - points[-1][0], points[0][1] - points[-1][1]) <= TOL:
+        center = circle_from_three(
+            points[0], points[len(points) // 3], points[(2 * len(points)) // 3]
+        )
+    else:
+        center = circle_from_three(points[0], points[len(points) // 2], points[-1])
+    if center is None:
+        return None
     radii = [math.hypot(point[0] - center[0], point[1] - center[1]) for point in points]
     radius = sum(radii) / len(radii)
-    radial_tolerance = max(1.0e-3, radius * 1.0e-4)
-    if radius <= TOL or max(abs(value - radius) for value in radii) > radial_tolerance:
+    if radius <= TOL:
+        return None
+    # Checking only vertices would turn any regular polygon into a circle.
+    # Include each chord midpoint so the tolerance is a genuine upper bound on
+    # how far the emitted analytic arc may move away from the source polyline.
+    errors = [abs(value - radius) for value in radii]
+    for start, end in zip(points, points[1:]):
+        midpoint = ((start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
+        errors.append(abs(math.hypot(midpoint[0] - center[0], midpoint[1] - center[1]) - radius))
+    return center, radius, max(errors)
+
+
+def signed_turn(a, b, c):
+    incoming = (b[0] - a[0], b[1] - a[1])
+    outgoing = (c[0] - b[0], c[1] - b[1])
+    return math.atan2(
+        incoming[0] * outgoing[1] - incoming[1] * outgoing[0],
+        incoming[0] * outgoing[0] + incoming[1] * outgoing[1],
+    )
+
+
+def recover_dense_circle(segments):
+    """Replace a tessellated circular loop with two native arcs."""
+    if len(segments) < 8 or any(segment[0] != "line" for segment in segments):
+        return None
+    points = [segment[1] for segment in segments]
+    # Repeat the first point so chord sagitta is included in the fit error.
+    fit = circle_fit(points + [points[0]])
+    if fit is None:
+        return None
+    center, _radius, error = fit
+    if error > simplification_tolerance:
         return None
 
     signed_area_twice = sum(
@@ -294,6 +364,124 @@ def recover_dense_circle(segments):
     ]
 
 
+def recover_partial_arcs(segments):
+    """Recover analytic arcs embedded in an otherwise polygonal contour."""
+    if len(segments) < 6 or any(segment[0] != "line" for segment in segments):
+        return segments
+
+    # Start on the straightest vertex. This prevents a rounded corner from
+    # wrapping across the list boundary simply because OpenCASCADE chose an
+    # arbitrary first edge for the closed wire.
+    cyclic_points = [segment[1] for segment in segments]
+    turns = [
+        abs(
+            signed_turn(
+                cyclic_points[index - 1],
+                cyclic_points[index],
+                cyclic_points[(index + 1) % len(cyclic_points)],
+            )
+        )
+        for index in range(len(cyclic_points))
+    ]
+    rotation = min(range(len(turns)), key=lambda index: turns[index])
+    segments = segments[rotation:] + segments[:rotation]
+    points = [segment[1] for segment in segments] + [segments[-1][2]]
+
+    interior_turns = [signed_turn(points[i - 1], points[i], points[i + 1]) for i in range(1, len(points) - 1)]
+    candidates = []
+    run_start = None
+    run_sign = 0
+    for offset, turn in enumerate(interior_turns, 1):
+        sign = 1 if turn > 0.0 else -1
+        is_curve = 1.0e-4 <= abs(turn) <= 0.35
+        if is_curve and (run_start is None or sign == run_sign):
+            if run_start is None:
+                run_start = offset
+                run_sign = sign
+            continue
+        if run_start is not None:
+            candidates.append((run_start, offset - 1, run_sign))
+        run_start = offset if is_curve else None
+        run_sign = sign if is_curve else 0
+    if run_start is not None:
+        candidates.append((run_start, len(points) - 2, run_sign))
+
+    replacements = {}
+    for start, end, sign in candidates:
+        arc_points = points[start : end + 1]
+        if len(arc_points) < 5:
+            continue
+        total_turn = sum(interior_turns[index - 1] for index in range(start, end + 1))
+        if abs(total_turn) < math.radians(8.0):
+            continue
+        fit = circle_fit(arc_points)
+        if fit is None:
+            continue
+        center, _radius, error = fit
+        if error > simplification_tolerance:
+            continue
+        # Replace the source line segments between the first and last fitted
+        # vertices. Endpoint-adjacent lines remain exact.
+        replacements[start] = (
+            end,
+            ("arc", arc_points[0], arc_points[-1], center, sign > 0),
+        )
+
+    if not replacements:
+        return segments
+    result = []
+    index = 0
+    while index < len(segments):
+        replacement = replacements.get(index)
+        if replacement is None:
+            result.append(segments[index])
+            index += 1
+        else:
+            end, arc = replacement
+            result.append(arc)
+            index = end
+    return result
+
+
+def merge_near_collinear_lines(segments):
+    """Collapse straight-ish line runs without exceeding the chosen tolerance."""
+    result = []
+    index = 0
+    while index < len(segments):
+        segment = segments[index]
+        if segment[0] != "line":
+            result.append(segment)
+            index += 1
+            continue
+        start = segment[1]
+        end = segment[2]
+        source_points = [start, end]
+        next_index = index + 1
+        while next_index < len(segments) and segments[next_index][0] == "line":
+            candidate_end = segments[next_index][2]
+            chord = (candidate_end[0] - start[0], candidate_end[1] - start[1])
+            length = math.hypot(chord[0], chord[1])
+            if length <= TOL:
+                break
+            deviation = max(
+                abs(
+                    chord[0] * (point[1] - start[1])
+                    - chord[1] * (point[0] - start[0])
+                )
+                / length
+                for point in source_points[1:]
+            )
+            previous = (end[0] - start[0], end[1] - start[1])
+            if deviation > simplification_tolerance or previous[0] * chord[0] + previous[1] * chord[1] <= 0.0:
+                break
+            end = candidate_end
+            source_points.append(candidate_end)
+            next_index += 1
+        result.append(("line", start, end, None, None))
+        index = next_index
+    return result
+
+
 def emit_sketch(lines, name, depth, wire):
     origin = axis * depth
     lines.append(f"[let {name} [sketch")
@@ -302,7 +490,12 @@ def emit_sketch(lines, name, depth, wire):
     lines.append(f"  {fmt(v_dir.x)} {fmt(v_dir.y)} {fmt(v_dir.z)}")
     lines.append("  #[")
     segments = curve_segments(wire)
-    segments = recover_dense_circle(segments) or segments
+    original_count = len(segments)
+    segments = recover_dense_circle(segments) or recover_partial_arcs(segments)
+    segments = merge_near_collinear_lines(segments)
+    reconstruction_stats["input_segments"] += original_count
+    reconstruction_stats["output_segments"] += len(segments)
+    reconstruction_stats["arcs"] += sum(segment[0] == "arc" for segment in segments)
     for kind, start, end, center, ccw in segments:
         if kind == "line":
             lines.append(
@@ -320,11 +513,14 @@ lines = [
     "; Reconstructed as native Loon geometry",
     "; Source: " + source_name,
     "; The source CAD file is not embedded or referenced by this document.",
+    f"; Numeric precision: {decimal_places} decimal places",
+    f"; Maximum contour simplification deviation: {fmt(simplification_tolerance)} model units",
     "",
 ]
 roots = []
 counter = 0
 recovered_volume = 0.0
+reconstruction_stats = {"input_segments": 0, "output_segments": 0, "arcs": 0}
 
 for low, high in zip(levels, levels[1:]):
     if high - low <= TOL:
@@ -388,11 +584,25 @@ if relative_error > allowed_relative_error:
         f"reconstruction volume check failed ({relative_error * 100.0:.6f}% error)"
     )
 
-# Touching extrusion slabs remain separate roots. This avoids feeding exactly
-# coincident slab faces into a boolean union while retaining the same visible
-# and exportable geometry.
-for index, root in enumerate(roots, 1):
-    lines.append(f"[root {root} \"default\"] ; Recovered layer {index}")
+# Pairwise unions keep the CSG tree shallow and publish one VCAD part even
+# when reconstruction needed several adjacent extrusion regions.
+union_round = list(roots)
+union_counter = 0
+while len(union_round) > 1:
+    next_round = []
+    for index in range(0, len(union_round), 2):
+        if index + 1 == len(union_round):
+            next_round.append(union_round[index])
+            continue
+        union_counter += 1
+        union_name = f"reconstructed-union-{union_counter}"
+        lines.append(
+            f"[let {union_name} [union {union_round[index + 1]} {union_round[index]}]]"
+        )
+        next_round.append(union_name)
+    union_round = next_round
+lines.append("")
+lines.append(f"[root {union_round[0]} \"default\"] ; Reconstructed source body")
 
 with open(output_path, "w") as output:
     output.write("\n".join(lines) + "\n")
@@ -406,6 +616,12 @@ report = {
     "face_count": len(shape.Faces),
     "solid_count": len(shape.Solids),
     "source_format": source_extension[1:],
+    "output_parts": 1,
+    "decimal_places": decimal_places,
+    "simplification_tolerance": simplification_tolerance,
+    "input_segments": reconstruction_stats["input_segments"],
+    "output_segments": reconstruction_stats["output_segments"],
+    "recovered_arcs": reconstruction_stats["arcs"],
 }
 if report_path:
     with open(report_path, "w") as output:

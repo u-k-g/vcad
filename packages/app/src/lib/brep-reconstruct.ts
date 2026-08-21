@@ -8,6 +8,17 @@ export interface CadReconstructionResult {
   reconstructedVolume: number;
   relativeVolumeError: number;
   faceCount: number;
+  outputParts: number;
+  decimalPlaces: number;
+  simplificationTolerance: number;
+  inputSegments: number;
+  outputSegments: number;
+  recoveredArcs: number;
+}
+
+export interface CadReconstructionOptions {
+  decimalPlaces: number;
+  simplificationTolerance: number;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -26,6 +37,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export async function reconstructCadToLoon(
   buffer: ArrayBuffer,
   sourceName: string,
+  options: CadReconstructionOptions,
 ): Promise<CadReconstructionResult> {
   if (!isTauri()) {
     throw new Error(
@@ -35,5 +47,7 @@ export async function reconstructCadToLoon(
   return invoke<CadReconstructionResult>("reconstruct_cad_to_loon", {
     dataBase64: arrayBufferToBase64(buffer),
     sourceName,
+    decimalPlaces: options.decimalPlaces,
+    simplificationTolerance: options.simplificationTolerance,
   });
 }

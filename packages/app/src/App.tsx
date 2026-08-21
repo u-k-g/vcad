@@ -16,6 +16,8 @@ import { Header } from "@/components/Header";
 import { StatusBar } from "@/components/StatusBar";
 import { ToolPalette } from "@/components/ToolPalette";
 import { ToolDialogs } from "@/components/ToolDialogs";
+import { ReconstructionImportDialog } from "@/components/ReconstructionImportDialog";
+import type { CadReconstructionOptions } from "@/lib/brep-reconstruct";
 // Viewport is the heaviest module in the bundle (~1MB after gzip): it pulls in
 // three, @react-three/fiber, and @react-three/drei. Lazy-loading it lets the
 // splash render and WASM start fetching before we pay the parse cost.
@@ -266,6 +268,36 @@ export function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [reconstructionFileName, setReconstructionFileName] = useState<string | null>(null);
+  const reconstructionPromptRef = useRef<
+    ((options: CadReconstructionOptions | null) => void) | null
+  >(null);
+
+  const requestReconstructionOptions = useCallback((fileName: string) => {
+    reconstructionPromptRef.current?.(null);
+    return new Promise<CadReconstructionOptions | null>((resolve) => {
+      reconstructionPromptRef.current = resolve;
+      setReconstructionFileName(fileName);
+    });
+  }, []);
+
+  const finishReconstructionPrompt = useCallback(
+    (options: CadReconstructionOptions | null) => {
+      const resolve = reconstructionPromptRef.current;
+      reconstructionPromptRef.current = null;
+      setReconstructionFileName(null);
+      resolve?.(options);
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      reconstructionPromptRef.current?.(null);
+      reconstructionPromptRef.current = null;
+    },
+    [],
+  );
 
   const bootPhase = useBootStore((s) => s.phase);
   const bootError = useBootStore((s) => s.error);
@@ -462,6 +494,8 @@ export function App() {
     // fail-closed, so unsupported geometry never silently becomes a mesh.
     if (reconstructNativeCad) {
       try {
+        const reconstructionOptions = await requestReconstructionOptions(file.name);
+        if (!reconstructionOptions) return;
         const engine = useEngineStore.getState().engine;
         if (!engine) {
           useNotificationStore.getState().addToast("Engine not ready", "error");
@@ -471,7 +505,7 @@ export function App() {
         const { reconstructCadToLoon } = await import("@/lib/brep-reconstruct");
         const result = await runJob(
           { verb: `Reconstructing ${file.name} as native Loon` },
-          () => reconstructCadToLoon(buffer, file.name),
+          () => reconstructCadToLoon(buffer, file.name, reconstructionOptions),
         );
         const evalLoon = (source: string) => {
           const document = engine.evalVcadSource(source);
@@ -486,7 +520,7 @@ export function App() {
         useNotificationStore
           .getState()
           .addToast(
-            `Reconstructed ${result.faceCount} source faces as ${result.layers} native Loon extrusion layers (${result.axis.toUpperCase()} axis)`,
+            `Reconstructed ${result.faceCount} source faces as one native Loon part: ${result.outputSegments} segments, including ${result.recoveredArcs} analytical arcs`,
             "success",
           );
       } catch (err) {
@@ -777,7 +811,7 @@ export function App() {
       console.error("Failed to load file:", err);
       useNotificationStore.getState().addToast("Failed to load document", "error");
     }
-  }, []);
+  }, [requestReconstructionOptions]);
 
   // Populate the forward-ref so `handleOpen` (declared above) can dispatch
   // Tauri-picked files through the same processing pipeline.
@@ -1305,6 +1339,11 @@ export function App() {
             onAboutOpen={() => setAboutOpen(true)}
           />
           <RecentFilesModal />
+          <ReconstructionImportDialog
+            fileName={reconstructionFileName}
+            onCancel={() => finishReconstructionPrompt(null)}
+            onConfirm={(options) => finishReconstructionPrompt(options)}
+          />
         </AsyncBoundary>
         <input
           ref={fileInputRef}
