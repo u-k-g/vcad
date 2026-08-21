@@ -243,6 +243,57 @@ def containment_depth(index, faces):
     return depth
 
 
+def recover_dense_circle(segments):
+    """Replace a densely tessellated circular loop with two native arcs."""
+    if len(segments) < 32 or any(segment[0] != "line" for segment in segments):
+        return None
+    points = [segment[1] for segment in segments]
+    a = points[0]
+    b = points[len(points) // 3]
+    c = points[(2 * len(points)) // 3]
+    determinant = 2.0 * (
+        a[0] * (b[1] - c[1])
+        + b[0] * (c[1] - a[1])
+        + c[0] * (a[1] - b[1])
+    )
+    if abs(determinant) <= TOL:
+        return None
+    a_squared = a[0] * a[0] + a[1] * a[1]
+    b_squared = b[0] * b[0] + b[1] * b[1]
+    c_squared = c[0] * c[0] + c[1] * c[1]
+    center = (
+        (
+            a_squared * (b[1] - c[1])
+            + b_squared * (c[1] - a[1])
+            + c_squared * (a[1] - b[1])
+        )
+        / determinant,
+        (
+            a_squared * (c[0] - b[0])
+            + b_squared * (a[0] - c[0])
+            + c_squared * (b[0] - a[0])
+        )
+        / determinant,
+    )
+    radii = [math.hypot(point[0] - center[0], point[1] - center[1]) for point in points]
+    radius = sum(radii) / len(radii)
+    radial_tolerance = max(1.0e-3, radius * 1.0e-4)
+    if radius <= TOL or max(abs(value - radius) for value in radii) > radial_tolerance:
+        return None
+
+    signed_area_twice = sum(
+        point[0] * points[(index + 1) % len(points)][1]
+        - points[(index + 1) % len(points)][0] * point[1]
+        for index, point in enumerate(points)
+    )
+    halfway = points[len(points) // 2]
+    ccw = signed_area_twice > 0.0
+    return [
+        ("arc", points[0], halfway, center, ccw),
+        ("arc", halfway, points[0], center, ccw),
+    ]
+
+
 def emit_sketch(lines, name, depth, wire):
     origin = axis * depth
     lines.append(f"[let {name} [sketch")
@@ -250,7 +301,9 @@ def emit_sketch(lines, name, depth, wire):
     lines.append(f"  {fmt(u_dir.x)} {fmt(u_dir.y)} {fmt(u_dir.z)}")
     lines.append(f"  {fmt(v_dir.x)} {fmt(v_dir.y)} {fmt(v_dir.z)}")
     lines.append("  #[")
-    for kind, start, end, center, ccw in curve_segments(wire):
+    segments = curve_segments(wire)
+    segments = recover_dense_circle(segments) or segments
+    for kind, start, end, center, ccw in segments:
         if kind == "line":
             lines.append(
                 f"    [line {fmt(start[0])} {fmt(start[1])} {fmt(end[0])} {fmt(end[1])}]"
