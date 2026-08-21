@@ -2049,6 +2049,48 @@ export class Engine {
     };
   }
 
+  /** Import and tessellate STEP data off the browser's main thread.
+   *
+   * Falls back to the synchronous implementation when Web Workers are not
+   * available (for example in Node), while desktop/browser builds stay
+   * responsive during expensive STEP parsing.
+   */
+  async importStepWithReportAsync(data: ArrayBuffer): Promise<StepImportResult> {
+    if (this.worker && this.workerReady) {
+      try {
+        await this.workerReady;
+      } catch {
+        // Worker initialization failed — use the synchronous fallback below.
+      }
+
+      if (this.worker) {
+        return this.importStepInWorker(data);
+      }
+    }
+
+    return this.importStepWithReport(data);
+  }
+
+  private importStepInWorker(data: ArrayBuffer): Promise<StepImportResult> {
+    const worker = this.worker!;
+    const id = Math.random().toString(36).slice(2);
+
+    return new Promise<StepImportResult>((resolve, reject) => {
+      const onMessage = (event: MessageEvent) => {
+        if (event.data.id !== id) return;
+        worker.removeEventListener("message", onMessage);
+
+        if (event.data.type === "step-import-result") {
+          resolve(event.data.result as StepImportResult);
+        } else if (event.data.type === "error") {
+          reject(new Error(event.data.message));
+        }
+      };
+      worker.addEventListener("message", onMessage);
+      worker.postMessage({ type: "import-step", id, data }, [data]);
+    });
+  }
+
   /**
    * Register STEP file contents so `step_import` nodes resolve to B-rep.
    *

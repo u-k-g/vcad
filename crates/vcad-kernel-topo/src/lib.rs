@@ -6,6 +6,8 @@
 //! topology of B-rep solids: vertices, edges, loops, faces, shells,
 //! and solids.
 
+use std::collections::HashSet;
+
 use slotmap::{new_key_type, SlotMap};
 use vcad_kernel_math::Point3;
 
@@ -341,9 +343,8 @@ impl Topology {
         let start = self.loops[loop_id].half_edge;
         LoopHalfEdgeIter {
             topo: self,
-            start,
             current: Some(start),
-            started: false,
+            visited: HashSet::new(),
         }
     }
 
@@ -417,9 +418,8 @@ impl Default for Topology {
 /// Iterator over half-edges in a loop.
 pub struct LoopHalfEdgeIter<'a> {
     topo: &'a Topology,
-    start: HalfEdgeId,
     current: Option<HalfEdgeId>,
-    started: bool,
+    visited: HashSet<HalfEdgeId>,
 }
 
 impl<'a> Iterator for LoopHalfEdgeIter<'a> {
@@ -427,11 +427,15 @@ impl<'a> Iterator for LoopHalfEdgeIter<'a> {
 
     fn next(&mut self) -> Option<HalfEdgeId> {
         let current = self.current?;
-        if self.started && current == self.start {
+        // A valid loop eventually points back to its first half-edge. Imported
+        // topology can be malformed, however, and may enter a different cycle.
+        // Stop at any repeated half-edge so callers cannot spin forever or
+        // allocate until OOM while collecting a corrupt loop.
+        if !self.visited.insert(current) {
+            self.current = None;
             return None;
         }
-        self.started = true;
-        self.current = self.topo.half_edges[current].next;
+        self.current = self.topo.half_edges.get(current).and_then(|he| he.next);
         Some(current)
     }
 }
@@ -510,6 +514,29 @@ mod tests {
 
         let loop_id = topo.add_loop(&[he0, he1, he2, he3]);
         assert_eq!(topo.loop_len(loop_id), 4);
+    }
+
+    #[test]
+    fn loop_traversal_stops_on_a_cycle_that_does_not_include_its_start() {
+        let mut topo = Topology::new();
+        let v0 = topo.add_vertex(Point3::origin());
+        let v1 = topo.add_vertex(Point3::new(1.0, 0.0, 0.0));
+        let v2 = topo.add_vertex(Point3::new(0.0, 1.0, 0.0));
+
+        let he0 = topo.add_half_edge(v0);
+        let he1 = topo.add_half_edge(v1);
+        let he2 = topo.add_half_edge(v2);
+        let loop_id = topo.add_loop(&[he0, he1, he2]);
+
+        // Simulate corrupt imported topology: traversal leaves the start and
+        // then cycles between the other two half-edges forever.
+        topo.half_edges[he2].next = Some(he1);
+
+        assert_eq!(
+            topo.loop_half_edges(loop_id).collect::<Vec<_>>(),
+            vec![he0, he1, he2]
+        );
+        assert_eq!(topo.loop_len(loop_id), 3);
     }
 
     #[test]

@@ -532,9 +532,24 @@ impl<'a> StepReader<'a> {
                 // Collect half-edges for this loop.
                 // For subdivided curved edges, expand to the chain of sub-half-edges.
                 let mut loop_hes = Vec::new();
-                for &oe_id in &loop_.edge_ids {
+                for edge_index in 0..loop_.edge_ids.len() {
+                    // A false FACE_BOUND orientation reverses both the order
+                    // of the EDGE_LOOP and each ORIENTED_EDGE within it.
+                    // Ignoring this can assign one half-edge to two different
+                    // loops; the later add_loop then rewires the earlier loop
+                    // into a cycle that never returns to its start.
+                    let oe_id = if bound.orientation {
+                        loop_.edge_ids[edge_index]
+                    } else {
+                        loop_.edge_ids[loop_.edge_ids.len() - 1 - edge_index]
+                    };
                     let oe = parse_oriented_edge(self.file, oe_id)?;
-                    let key = (oe.edge_id, oe.orientation);
+                    let effective_orientation = if bound.orientation {
+                        oe.orientation
+                    } else {
+                        !oe.orientation
+                    };
+                    let key = (oe.edge_id, effective_orientation);
                     if let Some(chain) = self.subdivided_edges.get(&key) {
                         loop_hes.extend_from_slice(chain);
                     } else {
@@ -928,11 +943,11 @@ DATA;
 #122 = ORIENTED_EDGE('', *, *, #102, .F.);
 #123 = ORIENTED_EDGE('', *, *, #101, .F.);
 
-/* Oriented edges - top face (CCW from above) */
-#124 = ORIENTED_EDGE('', *, *, #104, .T.);
-#125 = ORIENTED_EDGE('', *, *, #105, .T.);
-#126 = ORIENTED_EDGE('', *, *, #106, .T.);
-#127 = ORIENTED_EDGE('', *, *, #107, .T.);
+/* Oriented edges - top face, reversed by its false FACE_BOUND orientation */
+#124 = ORIENTED_EDGE('', *, *, #107, .F.);
+#125 = ORIENTED_EDGE('', *, *, #106, .F.);
+#126 = ORIENTED_EDGE('', *, *, #105, .F.);
+#127 = ORIENTED_EDGE('', *, *, #104, .F.);
 
 /* Oriented edges - front face */
 #130 = ORIENTED_EDGE('', *, *, #100, .T.);
@@ -968,7 +983,7 @@ DATA;
 
 /* Face bounds */
 #160 = FACE_OUTER_BOUND('', #150, .T.);
-#161 = FACE_OUTER_BOUND('', #151, .T.);
+#161 = FACE_OUTER_BOUND('', #151, .F.);
 #162 = FACE_OUTER_BOUND('', #152, .T.);
 #163 = FACE_OUTER_BOUND('', #153, .T.);
 #164 = FACE_OUTER_BOUND('', #154, .T.);
@@ -999,6 +1014,17 @@ END-ISO-10303-21;
         assert_eq!(solid.topology.vertices.len(), 8);
         assert_eq!(solid.topology.faces.len(), 6);
         assert_eq!(solid.geometry.surfaces.len(), 6);
+        for (loop_id, loop_) in &solid.topology.loops {
+            let half_edges = solid.topology.loop_half_edges(loop_id).collect::<Vec<_>>();
+            assert_eq!(half_edges.len(), 4);
+            assert_eq!(
+                solid.topology.half_edges[*half_edges.last().unwrap()].next,
+                Some(loop_.half_edge)
+            );
+            assert!(half_edges
+                .iter()
+                .all(|&he| solid.topology.half_edges[he].loop_id == Some(loop_id)));
+        }
     }
 
     #[test]

@@ -515,7 +515,7 @@ export function App() {
           summary: importWarnings,
         } = await runJob(
           { verb: `Importing ${file.name}` },
-          () => engine.importStepWithReport(buffer),
+          () => engine.importStepWithReportAsync(buffer),
         );
         logger.info("step", `Got meshes: ${rawMeshes.length}`);
         const skipped = importReport.reduce(

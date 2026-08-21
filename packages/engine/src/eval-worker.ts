@@ -47,6 +47,21 @@ interface WasmEvaluatedScene {
   timing?: EvalTimingData;
 }
 
+interface WasmStepImportResult {
+  meshes: WasmMesh[];
+  report: Array<{
+    solid_id: number;
+    total_faces: number;
+    skipped_faces: Array<{
+      face_id: number;
+      surface_id: number;
+      reason: string;
+    }>;
+    notes: string[];
+  }>;
+  summary: string | null;
+}
+
 type WasmEvaluateDocumentFn = (docJson: string, skipClashDetection: boolean) => WasmEvaluatedScene;
 
 /** The kernel module for the TS evaluator fallback */
@@ -55,6 +70,12 @@ let kernelModule: any = null;
 
 /** Native WASM evaluateDocument (may not be available in older builds) */
 let wasmEvaluateDocument: WasmEvaluateDocumentFn | null = null;
+
+/** STEP import functions run here so parsing/tessellation cannot block the UI. */
+let wasmImportStepBuffer: ((data: Uint8Array) => WasmMesh[]) | null = null;
+let wasmImportStepBufferWithReport:
+  | ((data: Uint8Array) => WasmStepImportResult)
+  | null = null;
 
 /** Whether we're using the fast WASM path or the TS fallback */
 let evaluatorMode: "wasm" | "ts" = "ts";
@@ -213,6 +234,11 @@ self.onmessage = async (e: MessageEvent) => {
 
       // Check if native WASM evaluator is available
       wasmEvaluateDocument = (wasm as Record<string, unknown>).evaluateDocument as WasmEvaluateDocumentFn | null;
+      wasmImportStepBuffer = wasm.importStepBuffer as (data: Uint8Array) => WasmMesh[];
+      wasmImportStepBufferWithReport = (wasm as Record<string, unknown>)
+        .importStepBufferWithReport as
+        | ((data: Uint8Array) => WasmStepImportResult)
+        | null;
       evaluatorMode = wasmEvaluateDocument ? "wasm" : "ts";
 
       self.postMessage({ type: "ready" });
@@ -235,6 +261,49 @@ self.onmessage = async (e: MessageEvent) => {
       const transferables = collectTransferables(scene);
       (self as unknown as DedicatedWorkerGlobalScope).postMessage(
         { type: "result", id, scene, workerTotalMs },
+        transferables,
+      );
+    } catch (err) {
+      self.postMessage({ type: "error", id, message: String(err) });
+    }
+    return;
+  }
+
+  if (type === "import-step") {
+    const { id, data } = e.data as { id: string; data: ArrayBuffer };
+    if (!wasmImportStepBuffer) {
+      self.postMessage({ type: "error", id, message: "Worker not initialized" });
+      return;
+    }
+    try {
+      const bytes = new Uint8Array(data);
+      const imported = wasmImportStepBufferWithReport
+        ? wasmImportStepBufferWithReport(bytes)
+        : {
+            meshes: wasmImportStepBuffer(bytes),
+            report: [],
+            summary: null,
+          };
+      const result = {
+        meshes: imported.meshes.map((mesh) => ({
+          positions:
+            mesh.positions instanceof Float32Array
+              ? mesh.positions
+              : new Float32Array(mesh.positions),
+          indices:
+            mesh.indices instanceof Uint32Array
+              ? mesh.indices
+              : new Uint32Array(mesh.indices),
+        })),
+        report: imported.report,
+        summary: imported.summary,
+      };
+      const transferables = result.meshes.flatMap((mesh) => [
+        mesh.positions.buffer as ArrayBuffer,
+        mesh.indices.buffer as ArrayBuffer,
+      ]);
+      (self as unknown as DedicatedWorkerGlobalScope).postMessage(
+        { type: "step-import-result", id, result },
         transferables,
       );
     } catch (err) {
