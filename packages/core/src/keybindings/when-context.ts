@@ -61,13 +61,42 @@ export function buildWhenContext(inputs: WhenInputs): WhenBits {
   return bits;
 }
 
-/** Detect whether the user is currently typing into a text input — the
- * single most important when-context flag because almost every binding
- * should be suppressed inside inputs. */
+/** Detect whether an event target belongs to an editable control. Checking
+ * ancestors matters for rich-text editors, whose events commonly originate
+ * from a nested span rather than the contenteditable element itself. */
 export function isInputFocused(target: EventTarget | null): boolean {
-  if (!target || !(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  if (target.isContentEditable) return true;
-  return false;
+  if (!target || typeof Element === "undefined") return false;
+
+  let element: Element | null = null;
+  if (target instanceof Element) {
+    element = target;
+  } else if (typeof Node !== "undefined" && target instanceof Node) {
+    element = target.parentElement;
+  }
+  if (!element) return false;
+
+  if (element.closest("input, textarea, select, [data-vcad-text-input]")) {
+    return true;
+  }
+  if (element.closest('[role="textbox"], [role="searchbox"], [role="combobox"]')) {
+    return true;
+  }
+
+  // Respect an explicit contenteditable="false" island inside an editable
+  // container instead of continuing up to the outer editor.
+  const contentEditable = element.closest("[contenteditable]");
+  return (
+    contentEditable !== null &&
+    contentEditable.getAttribute("contenteditable") !== "false"
+  );
+}
+
+/** Return true when a keyboard event should remain entirely local to an
+ * editable control. `composedPath()` covers shadow DOM; activeElement is a
+ * fallback for editors that retarget their keyboard events. */
+export function isInputEvent(event: Event): boolean {
+  if (event.composedPath().some(isInputFocused)) return true;
+  return (
+    typeof document !== "undefined" && isInputFocused(document.activeElement)
+  );
 }

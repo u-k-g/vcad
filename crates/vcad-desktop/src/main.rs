@@ -79,6 +79,7 @@ fn main() {
             codex::codex_chat_cancel,
             brep::reconstruct_cad_to_loon,
             menu::set_menu_enabled,
+            menu::set_text_input_focused,
             context_menu::show_context_menu,
             platform::set_document_edited,
             platform::set_represented_filename,

@@ -230,6 +230,7 @@ export {
   formatChord,
   isMac,
   buildWhenContext,
+  isInputEvent,
   isInputFocused,
   getKeybindingRegistry,
   getKeybindingRegistrySync,

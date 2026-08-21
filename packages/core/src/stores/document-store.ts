@@ -727,6 +727,9 @@ function applyApiResult(result: ApiResult): Partial<DocumentState> {
     consumedParts,
     nextNodeId: computeNextNodeId(result.document),
     isDirty: true,
+    // Once geometry changes, preserved Loon text no longer describes the
+    // materialized document. The Source panel will regenerate it from IR.
+    loonSource: null,
   };
 }
 
@@ -756,6 +759,7 @@ function applyLegacyResult(result: CrdtMutationResult): Partial<DocumentState> {
     consumedParts,
     nextNodeId: computeNextNodeId(result.document),
     isDirty: true,
+    loonSource: null,
   };
 }
 

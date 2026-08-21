@@ -1,6 +1,13 @@
 import { useEffect } from "react";
 import { useAnimationStore } from "@/stores/animation-store";
-import { useUiStore, useDocumentStore, useSketchStore, useChatStore, isPrimitivePart } from "@vcad/core";
+import {
+  isInputEvent,
+  isPrimitivePart,
+  useChatStore,
+  useDocumentStore,
+  useSketchStore,
+  useUiStore,
+} from "@vcad/core";
 import type { FocusZone } from "@vcad/core";
 import { useElectronicsStore } from "../stores/electronics-store";
 import { useNotificationStore } from "../stores/notification-store";
@@ -22,15 +29,9 @@ export function useKeyboardShortcuts() {
       // chat shortcuts, etc.) keep their existing behavior.
       if (e.defaultPrevented) return;
 
-      // Ignore when typing in inputs
-      const target = e.target as HTMLElement;
-      const inInput =
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable;
-      if (inInput) {
-        return;
-      }
+      // Text controls own all of their keyboard events. Use the same robust
+      // shadow-DOM/contenteditable detection as the registry dispatcher.
+      if (isInputEvent(e)) return;
 
       const mod = e.ctrlKey || e.metaKey;
 

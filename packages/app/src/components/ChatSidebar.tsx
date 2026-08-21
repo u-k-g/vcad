@@ -430,48 +430,74 @@ function AnonTrialBar({ used, limit }: { used: number; limit: number }) {
 // SourcePanel — live-synced loon source view of the current document
 // ---------------------------------------------------------------------------
 
-function SourcePanel() {
+export function SourcePanel() {
   const document = useDocumentStore((s) => s.document);
-  const streaming = useChatStore((s) => s.streaming);
+  const loonSource = useDocumentStore((s) => s.loonSource);
   const isDraggingGizmo = useUiStore((s) => s.isDraggingGizmo);
   const [localSource, setLocalSource] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [unsupportedVariants, setUnsupportedVariants] = useState<string[]>([]);
   const [isDirty, setIsDirty] = useState(false);
+  const [syncState, setSyncState] = useState<"pending" | "synced" | "error">(
+    "pending",
+  );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync from the document, but skip while user is editing, AI is streaming, or gizmo is being dragged
+  // Sync from the document whenever this panel is not being edited. AI tool
+  // streaming is deliberately *not* a blocker: the debounce already folds a
+  // burst of document mutations together, and suppressing the effect for the
+  // whole AI turn is what left the panel blank while parts were visible.
   useEffect(() => {
-    if (isDirty || streaming || isDraggingGizmo) return;
+    if (isDirty) return;
+    if (isDraggingGizmo) {
+      setSyncState("pending");
+      return;
+    }
+
+    // Loon-authored documents already carry their exact source. Show it
+    // immediately instead of waiting for a lossy IR round-trip.
+    if (loonSource !== null) {
+      setLocalSource(loonSource);
+      setUnsupportedVariants([]);
+      setError(null);
+      setSyncState("synced");
+      return;
+    }
+
     // Debounce to avoid re-entrant WASM calls during rapid document updates
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    syncTimerRef.current = setTimeout(() => {
+    setSyncState("pending");
+    const timer = setTimeout(() => {
       try {
         const { source, unsupported } = documentToLoonChecked(document);
-        // Defensive: a read-only source *view* must never take the sidebar
-        // down. Anything malformed coming back from the binding degrades to
-        // an empty view with an error line, not an unmounted panel.
-        setLocalSource(typeof source === "string" ? source : "");
+        if (typeof source !== "string") {
+          throw new Error("Loon export returned no source for this document");
+        }
+        setLocalSource(source);
         setUnsupportedVariants(Array.isArray(unsupported) ? unsupported : []);
-        setError(
-          typeof source === "string"
-            ? null
-            : "loon export returned no source for this document",
-        );
+        setError(null);
+        setSyncState("synced");
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         setUnsupportedVariants([]);
+        setSyncState("error");
       }
     }, 150);
+    syncTimerRef.current = timer;
     return () => {
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      clearTimeout(timer);
+      if (syncTimerRef.current === timer) syncTimerRef.current = null;
     };
-  }, [document, isDirty, streaming, isDraggingGizmo]);
+  }, [document, loonSource, isDirty, isDraggingGizmo]);
 
-  const evalAndLoad = useCallback((source: string) => {
+  const evalAndLoad = useCallback((source: string): boolean => {
     const engine = useEngineStore.getState().engine;
-    if (!engine) return;
+    if (!engine) {
+      setError("Loon evaluator is not ready yet");
+      setSyncState("error");
+      return false;
+    }
     try {
       const evalLoon = (s: string) => {
         const doc = engine.evalVcadSource(s);
@@ -481,23 +507,41 @@ function SourcePanel() {
       const vcadFile = parseVcadFile(source, evalLoon);
       useDocumentStore.getState().loadDocument(vcadFile);
       setError(null);
+      setSyncState("synced");
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setSyncState("error");
+      return false;
     }
   }, []);
+
+  const queueEval = useCallback(
+    (source: string) => {
+      setIsDirty(true);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        if (evalAndLoad(source)) setIsDirty(false);
+      }, 300);
+    },
+    [evalAndLoad],
+  );
+
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    },
+    [],
+  );
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const value = e.target.value;
       setLocalSource(value);
-      setIsDirty(true);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        evalAndLoad(value);
-        setIsDirty(false);
-      }, 300);
+      queueEval(value);
     },
-    [evalAndLoad],
+    [queueEval],
   );
 
   const handleKeyDown = useCallback(
@@ -505,7 +549,8 @@ function SourcePanel() {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         if (debounceRef.current) clearTimeout(debounceRef.current);
-        evalAndLoad(localSource);
+        debounceRef.current = null;
+        if (evalAndLoad(localSource)) setIsDirty(false);
       }
       if (e.key === "Tab") {
         e.preventDefault();
@@ -515,12 +560,13 @@ function SourcePanel() {
         const val = ta.value;
         const next = val.substring(0, start) + "  " + val.substring(end);
         setLocalSource(next);
+        queueEval(next);
         requestAnimationFrame(() => {
           ta.selectionStart = ta.selectionEnd = start + 2;
         });
       }
     },
-    [localSource, evalAndLoad],
+    [localSource, evalAndLoad, queueEval],
   );
 
   return (
@@ -531,7 +577,11 @@ function SourcePanel() {
         onKeyDown={handleKeyDown}
         spellCheck={false}
         className="flex-1 resize-none bg-bg p-3 font-mono text-[10px] leading-relaxed text-text outline-none"
-        placeholder={"; Write loon source here\n[cube 20.0 20.0 20.0]"}
+        placeholder={
+          syncState === "pending"
+            ? "; Generating Loon source…"
+            : "; Write Loon source here\n[cube 20.0 20.0 20.0]"
+        }
       />
       {unsupportedVariants.length > 0 && (
         <div className="border-t border-warning/30 bg-warning/10 px-3 py-2 text-[10px] text-warning shrink-0">
@@ -546,7 +596,13 @@ function SourcePanel() {
         </div>
       )}
       <div className="border-t border-border/40 px-3 py-1 text-[9px] text-text-muted shrink-0">
-        {isDirty ? "Editing (will eval on pause)" : "Synced with document"} · ⌘⏎ to eval
+        {isDirty
+          ? "Editing (will eval on pause)"
+          : syncState === "pending"
+            ? "Generating source…"
+            : syncState === "error"
+              ? "Source sync failed"
+              : "Synced with document"} · ⌘⏎ to eval
       </div>
     </div>
   );

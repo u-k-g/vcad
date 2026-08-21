@@ -10,7 +10,7 @@
 
 import { useEffect } from "react";
 import { isTauri, invoke } from "@/lib/tauri";
-import type { Command } from "@vcad/core";
+import { isInputFocused, type Command } from "@vcad/core";
 
 const MENU_EVENT = "menu-command";
 
@@ -19,6 +19,35 @@ interface MenuCommandPayload {
 }
 
 export function useNativeMenu(commands: Command[]) {
+  // Cocoa routes standard editing shortcuts through native responder actions
+  // (`paste:`, `selectAll:`, etc.), not through a webview keydown event. Tell
+  // the desktop host when an editor owns focus so it can expose the native
+  // Edit menu; switch back to CAD accelerators when focus leaves the editor.
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    let lastFocused: boolean | undefined;
+    const syncFocus = () => {
+      const focused = isInputFocused(document.activeElement);
+      if (focused === lastFocused) return;
+      lastFocused = focused;
+      void invoke("set_text_input_focused", { focused }).catch(() => {
+        // Retry on the next focus transition if the native menu is still
+        // starting up or was rebuilt during a hot reload.
+        lastFocused = undefined;
+      });
+    };
+    const syncAfterFocusOut = () => queueMicrotask(syncFocus);
+
+    document.addEventListener("focusin", syncFocus, true);
+    document.addEventListener("focusout", syncAfterFocusOut, true);
+    syncFocus();
+    return () => {
+      document.removeEventListener("focusin", syncFocus, true);
+      document.removeEventListener("focusout", syncAfterFocusOut, true);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isTauri()) return;
     let dispose: (() => void) | undefined;

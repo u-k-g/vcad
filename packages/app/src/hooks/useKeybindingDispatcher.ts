@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef } from "react";
 import {
   chordFromEvent,
   buildWhenContext,
+  isInputEvent,
   isInputFocused,
   getKeybindingRegistry,
   useUiStore,
@@ -184,6 +185,11 @@ export function useKeybindingDispatcher({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Editors own their entire keyboard surface, including standard text
+      // operations such as select-all, copy/paste, undo/redo, and editor-
+      // specific shortcuts. App commands must never capture these events.
+      if (isInputEvent(e)) return;
+
       const registry = registryRef.current;
       if (!registry) return;
 
