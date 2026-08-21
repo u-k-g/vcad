@@ -38,10 +38,11 @@ export function ReconstructionImportDialog({
     );
   }, [fileName]);
 
-  const recommended =
-    decimalPlaces === RECOMMENDED_RECONSTRUCTION_OPTIONS.decimalPlaces &&
+  const accuracyRecommended =
+    decimalPlaces === RECOMMENDED_RECONSTRUCTION_OPTIONS.decimalPlaces;
+  const toleranceRecommended =
     simplificationTolerance ===
-      RECOMMENDED_RECONSTRUCTION_OPTIONS.simplificationTolerance;
+    RECOMMENDED_RECONSTRUCTION_OPTIONS.simplificationTolerance;
 
   return (
     <Dialog
@@ -65,28 +66,71 @@ export function ReconstructionImportDialog({
             </RadixDialog.Description>
           </div>
 
-          <label className="block space-y-2">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-medium text-text">Number accuracy</span>
-              <span>{decimalPlaces} decimal places</span>
+              <div className="flex items-center gap-2">
+                {accuracyRecommended ? (
+                  <span className="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand">
+                    Recommended
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDecimalPlaces(
+                        RECOMMENDED_RECONSTRUCTION_OPTIONS.decimalPlaces,
+                      )
+                    }
+                    className="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand hover:bg-brand/25"
+                  >
+                    Reset to recommended
+                  </button>
+                )}
+                <span
+                  className="font-mono tabular-nums text-text"
+                  aria-label="Number preview"
+                >
+                  {decimalPlaces === 0 ? "9" : `9.${"9".repeat(decimalPlaces)}`}
+                </span>
+              </div>
             </div>
-            <select
-              value={decimalPlaces}
-              onChange={(event) => setDecimalPlaces(Number(event.target.value))}
-              className="h-9 w-full rounded border border-border bg-bg px-3 text-xs text-text outline-none focus:border-brand"
+            <div
+              className="flex h-9 items-center justify-center gap-4 rounded border border-border bg-bg"
+              aria-label="Decimal places"
             >
-              {Array.from({ length: 9 }, (_, value) => (
-                <option key={value} value={value}>
-                  {value} decimal place{value === 1 ? "" : "s"}
-                </option>
-              ))}
-            </select>
+              <button
+                type="button"
+                aria-label="Decrease decimal places"
+                disabled={decimalPlaces === 0}
+                onClick={() =>
+                  setDecimalPlaces((value) => Math.max(0, value - 1))
+                }
+                className="flex h-7 w-7 items-center justify-center rounded text-base text-text hover:bg-hover disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                −
+              </button>
+              <span className="w-5 text-center font-mono text-sm tabular-nums text-text">
+                {decimalPlaces}
+              </span>
+              <button
+                type="button"
+                aria-label="Increase decimal places"
+                disabled={decimalPlaces === 8}
+                onClick={() =>
+                  setDecimalPlaces((value) => Math.min(8, value + 1))
+                }
+                className="flex h-7 w-7 items-center justify-center rounded text-base text-text hover:bg-hover disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                +
+              </button>
+            </div>
             <p className="leading-relaxed">
               Coordinates are rounded before Loon is written. Four places
               removes mesh floating-point noise while retaining 0.0001 mm
               resolution.
             </p>
-          </label>
+          </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -97,10 +141,22 @@ export function ReconstructionImportDialog({
                 Fidelity versus simplicity
               </label>
               <div className="flex items-center gap-2">
-                {recommended && (
+                {toleranceRecommended ? (
                   <span className="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand">
                     Recommended
                   </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSimplificationTolerance(
+                        RECOMMENDED_RECONSTRUCTION_OPTIONS.simplificationTolerance,
+                      )
+                    }
+                    className="rounded bg-brand/15 px-1.5 py-0.5 text-[10px] font-medium text-brand hover:bg-brand/25"
+                  >
+                    Reset to recommended
+                  </button>
                 )}
                 <span className="tabular-nums text-text">
                   {toleranceLabel(simplificationTolerance)}
@@ -129,22 +185,6 @@ export function ReconstructionImportDialog({
               0.01 mm setting is conservative but large enough to recover
               normally tessellated circles and fillets.
             </p>
-            {!recommended && (
-              <button
-                type="button"
-                onClick={() => {
-                  setDecimalPlaces(
-                    RECOMMENDED_RECONSTRUCTION_OPTIONS.decimalPlaces,
-                  );
-                  setSimplificationTolerance(
-                    RECOMMENDED_RECONSTRUCTION_OPTIONS.simplificationTolerance,
-                  );
-                }}
-                className="text-brand hover:underline"
-              >
-                Restore recommended settings
-              </button>
-            )}
           </div>
         </div>
 

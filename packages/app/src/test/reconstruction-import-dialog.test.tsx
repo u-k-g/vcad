@@ -15,14 +15,23 @@ describe("ReconstructionImportDialog", () => {
       />,
     );
 
-    const accuracy = screen.getByLabelText(/Number accuracy/i);
     const tolerance = screen.getByLabelText(/Fidelity versus simplicity/i);
-    expect((accuracy as HTMLSelectElement).value).toBe("4");
+    expect(screen.getByLabelText("Number preview").textContent).toBe("9.9999");
+    expect(screen.getByLabelText("Decimal places").textContent).toContain("4");
     expect((tolerance as HTMLInputElement).value).toBe("0.01");
-    expect(screen.getByText("Recommended")).toBeTruthy();
+    expect(screen.getAllByText("Recommended")).toHaveLength(2);
 
-    fireEvent.change(accuracy, { target: { value: "5" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Increase decimal places" }),
+    );
+    expect(screen.getByLabelText("Number preview").textContent).toBe("9.99999");
+    expect(
+      screen.getByRole("button", { name: "Reset to recommended" }),
+    ).toBeTruthy();
     fireEvent.change(tolerance, { target: { value: "0.025" } });
+    expect(
+      screen.getAllByRole("button", { name: "Reset to recommended" }),
+    ).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "Reconstruct" }));
 
     expect(onConfirm).toHaveBeenCalledWith({
