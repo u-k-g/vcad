@@ -1,0 +1,9 @@
+{
+  "id": "2026-08-21-native-feature-reconstruction",
+  "version": "0.9.4",
+  "date": "2026-08-21",
+  "category": "feat",
+  "title": "Mesh imports reconstruct as native feature histories",
+  "summary": "Desktop STL, OBJ, 3MF, PLY, GLB/glTF, OFF, AMF, STEP/STP, and BREP/BRP imports now run through an in-process native reconstructor that emits one base body with analytical contours and local additive/subtractive features; the former FreeCAD/Python slab converter is removed.",
+  "features": ["import", "loon", "mesh", "step", "gltf", "desktop"]
+}

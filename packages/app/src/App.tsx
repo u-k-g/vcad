@@ -17,7 +17,7 @@ import { StatusBar } from "@/components/StatusBar";
 import { ToolPalette } from "@/components/ToolPalette";
 import { ToolDialogs } from "@/components/ToolDialogs";
 import { ReconstructionImportDialog } from "@/components/ReconstructionImportDialog";
-import type { CadReconstructionOptions } from "@/lib/brep-reconstruct";
+import type { CadReconstructionOptions } from "@/lib/cad-reconstruct";
 // Viewport is the heaviest module in the bundle (~1MB after gzip): it pulls in
 // three, @react-three/fiber, and @react-three/drei. Lazy-loading it lets the
 // splash render and WASM start fetching before we pay the parse cost.
@@ -430,7 +430,9 @@ export function App() {
   // declared below, so we reference it through a ref we update after the
   // definition. Keeps the dispatcher wiring above the processFile body
   // unchanged.
-  const processFileRef = useRef<((f: File) => Promise<void>) | null>(null);
+  const processFileRef = useRef<
+    ((file: File, sourcePath?: string) => Promise<void>) | null
+  >(null);
   const handleOpen = useCallback(() => {
     void (async () => {
       const { isTauri } = await import("@/lib/tauri");
@@ -443,7 +445,7 @@ export function App() {
             ? picked.contents
             : Uint8Array.from(picked.contents).buffer;
         const pseudoFile = new File([contents], picked.name);
-        await processFileRef.current?.(pseudoFile);
+        await processFileRef.current?.(pseudoFile, picked.path);
         return;
       }
       fileInputRef.current?.click();
@@ -461,7 +463,7 @@ export function App() {
   });
   useKeyboardShortcuts();
 
-  const processFile = useCallback(async (file: File) => {
+  const processFile = useCallback(async (file: File, sourcePath?: string) => {
     const ext = file.name.split(".").pop()?.toLowerCase();
 
     // Images dropped onto the viewport go to the AI chat as attachments —
@@ -483,14 +485,19 @@ export function App() {
       ext === "stp" ||
       ext === "stl" ||
       ext === "obj" ||
-      ext === "3mf";
+      ext === "3mf" ||
+      ext === "ply" ||
+      ext === "glb" ||
+      ext === "gltf" ||
+      ext === "off" ||
+      ext === "amf";
     const reconstructNativeCad =
       nativeReconstructionExtension && (await import("@/lib/tauri")).isTauri();
 
-    // BREP/STEP geometry and supported watertight meshes are reverse-engineered
-    // into native Loon operations.
+    // BREP/STEP geometry and supported watertight meshes are reverse-engineered by
+    // VCAD's in-process Rust recognizer into native Loon operations.
     // The source file is neither retained nor embedded: supported solids
-    // become sketches, extrusions, and hole differences. Recognition is
+    // become a spanning base extrusion plus local additions/cuts. Recognition is
     // fail-closed, so unsupported geometry never silently becomes a mesh.
     if (reconstructNativeCad) {
       try {
@@ -502,10 +509,16 @@ export function App() {
           return;
         }
         const buffer = await file.arrayBuffer();
-        const { reconstructCadToLoon } = await import("@/lib/brep-reconstruct");
+        const { reconstructCadToLoon } = await import("@/lib/cad-reconstruct");
         const result = await runJob(
           { verb: `Reconstructing ${file.name} as native Loon` },
-          () => reconstructCadToLoon(buffer, file.name, reconstructionOptions),
+          () =>
+            reconstructCadToLoon(
+              buffer,
+              file.name,
+              reconstructionOptions,
+              sourcePath,
+            ),
         );
         const evalLoon = (source: string) => {
           const document = engine.evalVcadSource(source);
@@ -520,7 +533,7 @@ export function App() {
         useNotificationStore
           .getState()
           .addToast(
-            `Reconstructed ${result.faceCount} source faces as one native Loon part: ${result.outputSegments} segments, including ${result.recoveredArcs} analytical arcs`,
+            `Reconstructed ${result.sourceTriangles.toLocaleString()} source triangles as ${result.bodyCount} native body with ${result.featureCount} features, including ${result.recoveredArcs} analytical arcs`,
             "success",
           );
       } catch (err) {
@@ -923,8 +936,8 @@ export function App() {
     const onDocuments = () => handleOpenDocuments();
     const onAbout = () => setAboutOpen(true);
     const onStartTutorial = () => startGuidedFlow();
-    const onRecentFile = (e: CustomEvent<{ file: File }>) => {
-      void processFile(e.detail.file);
+    const onRecentFile = (e: CustomEvent<{ file: File; path?: string }>) => {
+      void processFile(e.detail.file, e.detail.path);
     };
     window.addEventListener("vcad:save", onSave);
     window.addEventListener("vcad:open", onOpen);
@@ -1249,7 +1262,7 @@ export function App() {
         <div className="mt-1 text-sm text-text-muted">
           {isDraggingImage
             ? "I'll attach it to chat — describe what you want me to build"
-            : ".vcad, .loon, .brep, .step, .stl, .obj, .3mf, .urdf, .pes, .dst"}
+            : ".vcad, STEP, BREP, STL, OBJ, 3MF, PLY, glTF, OFF, AMF"}
         </div>
       </div>
     </div>
@@ -1348,7 +1361,7 @@ export function App() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".vcad,.loon,.json,.brep,.brp,.step,.stp,.stl,.obj,.3mf,.urdf,.pes,.dst,.kicad_pcb"
+          accept=".vcad,.loon,.json,.brep,.brp,.step,.stp,.stl,.obj,.3mf,.ply,.glb,.gltf,.off,.amf,.urdf,.pes,.dst,.kicad_pcb"
           className="hidden"
           onChange={handleFileChange}
         />

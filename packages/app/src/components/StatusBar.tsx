@@ -68,6 +68,7 @@ function formatAgo(ts: number, now: number): string {
  */
 export function StatusBar() {
   const parts = useDocumentStore((s) => s.parts);
+  const bodyCount = useDocumentStore((s) => s.document.roots.length);
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const selection = useUiStore((s) => s.selection);
   useLocaleStore((s) => s.locale);
@@ -271,8 +272,8 @@ export function StatusBar() {
 
       <FooterChip className="gap-3">
         <span className="tabular-nums">
-          {tFmt(parts.length === 1 ? "status.part" : "status.parts", {
-            count: String(parts.length),
+          {tFmt(bodyCount === 1 ? "status.part" : "status.parts", {
+            count: String(bodyCount),
           })}
         </span>
         {selCount > 0 && (

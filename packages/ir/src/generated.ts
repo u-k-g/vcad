@@ -1832,7 +1832,15 @@ export type EdgeQuery = { "type": "All" } | { "type": "Near",
 /**
  * Selection point in model space.
  */
-point: Vec3, } | { "type": "Direction", 
+point: Vec3, } | { "type": "Endpoints", 
+/**
+ * First edge endpoint in model space.
+ */
+a: Vec3, 
+/**
+ * Second edge endpoint in model space.
+ */
+b: Vec3, } | { "type": "Direction", 
 /**
  * Reference direction.
  */

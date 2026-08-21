@@ -129,7 +129,10 @@ export function InlineOnboarding({ visible }: InlineOnboardingProps) {
     const MAX_VCAD_BYTES = 64 * 1024 * 1024;
     const name = file.name.toLowerCase();
     if (!name.endsWith(".vcad")) {
-      console.error("Only .vcad files can be loaded here");
+      window.dispatchEvent(
+        new CustomEvent("vcad:open-recent-file", { detail: { file } }),
+      );
+      hide();
       e.target.value = "";
       return;
     }
@@ -190,7 +193,7 @@ export function InlineOnboarding({ visible }: InlineOnboardingProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".vcad,.loon,.json,.brep,.brp,.step,.stp,.stl,.obj,.3mf"
+          accept=".vcad,.loon,.json,.brep,.brp,.step,.stp,.stl,.obj,.3mf,.ply,.glb,.gltf,.off,.amf"
           onChange={handleFileChange}
           className="hidden"
         />
@@ -349,7 +352,7 @@ export function InlineOnboarding({ visible }: InlineOnboardingProps) {
           <ActionButton
             icon={FolderOpen}
             label="Open file"
-            hint=".vcad, .brep, .step, .stl, .obj, .3mf"
+            hint=".vcad, STEP, STL, OBJ, 3MF, PLY, glTF, OFF, AMF"
             onClick={handleOpenFile}
           />
         </div>

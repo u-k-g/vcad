@@ -73,6 +73,7 @@
   [Shell Solid f64]
   [Fillet Solid f64]
   [Chamfer Solid f64]
+  [EdgeBlendBetween Solid f64 f64 f64 f64 f64 f64 f64 f64]
   ; Sweep/Loft
   [SweepLine Sketch f64 f64 f64 f64 f64 f64]
   [SweepHelix Sketch f64 f64 f64 f64]
@@ -267,6 +268,10 @@
 [let shell [fn [t s] [Shell s t]]]
 [let fillet [fn [r s] [Fillet s r]]]
 [let chamfer [fn [d s] [Chamfer s d]]]
+; Select one reconstructed sharp edge by its exact endpoints, then apply a
+; constant blend: shape 0 = chamfer, shape 1 = circular fillet.
+[let edge-blend-between [fn [ax ay az bx by bz size shape s]
+  [EdgeBlendBetween s ax ay az bx by bz size shape]]]
 
 ; Patterns (subject-last)
 [let linear-pattern [fn [dx dy dz count spacing s]

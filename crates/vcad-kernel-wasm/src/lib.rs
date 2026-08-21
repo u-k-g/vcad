@@ -8494,6 +8494,10 @@ fn kernel_blend_args(
         vcad_ir::EdgeQuery::Near { point } => kf::EdgeQuery::Near {
             point: vcad_kernel_math::Point3::new(point.x, point.y, point.z),
         },
+        vcad_ir::EdgeQuery::Endpoints { a, b } => kf::EdgeQuery::Endpoints {
+            a: vcad_kernel_math::Point3::new(a.x, a.y, a.z),
+            b: vcad_kernel_math::Point3::new(b.x, b.y, b.z),
+        },
         vcad_ir::EdgeQuery::Direction { axis, tol_deg } => kf::EdgeQuery::Direction {
             axis: vcad_kernel_math::Vec3::new(axis.x, axis.y, axis.z),
             tol_deg: *tol_deg,

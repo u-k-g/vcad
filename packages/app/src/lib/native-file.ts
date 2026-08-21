@@ -11,6 +11,20 @@ import { isTauri } from "@/lib/tauri";
 
 const RECENT_FILES_KEY = "vcad:recentFiles";
 const RECENT_FILES_MAX = 10;
+const NATIVE_RECONSTRUCTION_EXTENSIONS = new Set([
+  "brep",
+  "brp",
+  "step",
+  "stp",
+  "stl",
+  "obj",
+  "3mf",
+  "ply",
+  "glb",
+  "gltf",
+  "off",
+  "amf",
+]);
 
 export interface RecentFile {
   path: string;
@@ -101,20 +115,17 @@ export async function openDocumentNative(): Promise<{
       { name: "STL", extensions: ["stl"] },
       { name: "Wavefront OBJ", extensions: ["obj"] },
       { name: "3MF", extensions: ["3mf"] },
+      { name: "PLY", extensions: ["ply"] },
+      { name: "glTF", extensions: ["glb", "gltf"] },
+      { name: "OFF", extensions: ["off"] },
+      { name: "AMF", extensions: ["amf"] },
     ],
   });
   if (!picked || typeof picked !== "string") return null;
   const extension = picked.split(".").pop()?.toLowerCase();
-  const contents =
-    extension === "brep" ||
-    extension === "brp" ||
-    extension === "step" ||
-    extension === "stp" ||
-    extension === "stl" ||
-    extension === "obj" ||
-    extension === "3mf"
-      ? await readFile(picked)
-      : await readTextFile(picked);
+  const contents = NATIVE_RECONSTRUCTION_EXTENSIONS.has(extension ?? "")
+    ? await readFile(picked)
+    : await readTextFile(picked);
   addRecentFile(picked);
   const name = picked.split("/").pop() ?? picked;
   return { path: picked, contents, name };
@@ -128,16 +139,9 @@ export async function readDocumentAtPath(
   try {
     const { readFile, readTextFile } = await import("@tauri-apps/plugin-fs");
     const extension = path.split(".").pop()?.toLowerCase();
-    const contents =
-      extension === "brep" ||
-      extension === "brp" ||
-      extension === "step" ||
-      extension === "stp" ||
-      extension === "stl" ||
-      extension === "obj" ||
-      extension === "3mf"
-        ? await readFile(path)
-        : await readTextFile(path);
+    const contents = NATIVE_RECONSTRUCTION_EXTENSIONS.has(extension ?? "")
+      ? await readFile(path)
+      : await readTextFile(path);
     const name = path.split("/").pop() ?? path;
     return { contents, name };
   } catch (err) {

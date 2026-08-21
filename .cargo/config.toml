@@ -1,0 +1,10 @@
+[env]
+# OCCT 7.5's vendored CMake project predates CMake 4's policy cutoff. This
+# keeps the existing occt-sys 0.2 build reproducible without patching registry
+# sources or requiring a machine-installed OpenCascade SDK.
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+
+# Tauri's minimum macOS version is 11. Build vendored C/C++ dependencies for
+# the same target so incremental artifacts cannot reproduce the mixed-version
+# linker failure that prompted this reconstruction work.
+MACOSX_DEPLOYMENT_TARGET = "11.0"

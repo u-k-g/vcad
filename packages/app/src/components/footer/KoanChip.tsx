@@ -70,6 +70,7 @@ export function KoanChip({
   mode?: FooterModeBadge | null;
 }) {
   const parts = useDocumentStore((s) => s.parts);
+  const bodyCount = useDocumentStore((s) => s.document.roots.length);
   const selectedPartIds = useUiStore((s) => s.selectedPartIds);
   const scene = useEngineStore((s) => s.scene);
 
@@ -105,8 +106,8 @@ export function KoanChip({
   } else if (mode) {
     const meta = MODE_META[mode];
     title = `Mode: ${meta.label}`;
-  } else if (parts.length > 0) {
-    title = `${parts.length} ${parts.length === 1 ? "part" : "parts"}${
+  } else if (bodyCount > 0) {
+    title = `${bodyCount} ${bodyCount === 1 ? "part" : "parts"}${
       triangles > 0 ? ` · ${formatTris(triangles)} triangles` : ""
     }`;
   } else {
@@ -146,11 +147,11 @@ export function KoanChip({
         {meta.label}
       </span>
     );
-  } else if (parts.length > 0) {
+  } else if (bodyCount > 0) {
     content = (
       <span className="text-text-muted">
-        <span className="tabular-nums">{parts.length}</span>{" "}
-        {parts.length === 1 ? "part" : "parts"}
+        <span className="tabular-nums">{bodyCount}</span>{" "}
+        {bodyCount === 1 ? "part" : "parts"}
         {triangles > 0 && (
           <>
             <span className="text-text-muted/40 mx-1.5">·</span>

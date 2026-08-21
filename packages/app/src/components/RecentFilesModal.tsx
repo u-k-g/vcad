@@ -54,7 +54,9 @@ export function RecentFilesModal() {
         : Uint8Array.from(result.contents).buffer;
     const pseudo = new File([fileContents], result.name);
     window.dispatchEvent(
-      new CustomEvent("vcad:open-recent-file", { detail: { file: pseudo } }),
+      new CustomEvent("vcad:open-recent-file", {
+        detail: { file: pseudo, path: file.path },
+      }),
     );
     setOpen(false);
   };

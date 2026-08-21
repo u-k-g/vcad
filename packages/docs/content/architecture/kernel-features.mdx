@@ -38,6 +38,12 @@ The vcad kernel is a purpose-built BRep (boundary representation) modeling kerne
 
 `vcad-kernel-naming` gives faces stable names derived from their generating operations (`n3:top`, `n1:side`, with deterministic split ordinals through booleans) instead of ephemeral arena keys, and names edges by their adjacent-face pair. Downstream references — `EdgeQuery::Named` on an edge blend — re-resolve after an upstream parameter change, so a fillet stays on the intended edge when the parent box is resized. Resolution is fail-closed: an ambiguous or lost reference is an explicit error (with a geometric-hint fallback matcher), never a silent rebind to the nearest edge.
 
+### Native Exchange-File Reconstruction
+
+`vcad-kernel-reconstruct` converts prismatic STL, OBJ, 3MF, PLY, GLB/glTF, OFF, AMF, STEP/STP, and OpenCascade BREP/BRP solids into self-contained Loon without Python, FreeCAD, or another process. STEP and BREP containers are decoded in-process with OCCT; feature inference and source generation are native Rust. Triangle sections are used as inference evidence, not published as a stack of mesh-depth slabs: the output is one spanning base extrusion followed by local additive and subtractive features, with tessellated circles and tangent corner runs recovered as analytical arcs. glTF node transforms and triangle strip/fan topology are applied before reconstruction. One connected input becomes one scene root and its construction history is nested beneath that body.
+
+The reconstruction is deliberately fail-closed. It validates mesh manifoldness, connectedness, source/reconstruction volume, and measured profile deviation before emitting source. Freeform surfaces that require a revolve, sweep, or loft recognizer are refused instead of being approximated by plausible-looking extrusions.
+
 ## Operations
 
 ### Boolean Operations
@@ -67,6 +73,8 @@ Every result is held to a post-boolean validity oracle: probe points are classif
 ```
 
 ![A filleted cube next to a chamfered cube](/assets/kernel/fillet-chamfer.jpg)
+
+For reconstructed histories, Loon also exposes `edge-blend-between`, which selects one edge by exact endpoint coordinates and applies a constant blend (`shape = 0` for chamfer, `shape = 1` for circular fillet). The reconstructor only emits this operation after the inferred edge can be resolved; otherwise it preserves the already-validated analytical arc in the generating sketch.
 
 ### Shell and Patterns
 

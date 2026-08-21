@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
-import type { CadReconstructionOptions } from "@/lib/brep-reconstruct";
+import type { CadReconstructionOptions } from "@/lib/cad-reconstruct";
 
 export const RECOMMENDED_RECONSTRUCTION_OPTIONS: CadReconstructionOptions = {
   decimalPlaces: 4,

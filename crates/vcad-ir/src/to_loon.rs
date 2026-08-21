@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
-use crate::{CsgOp, Document, Node, NodeId, PathCurve, SketchSegment2D};
+use crate::{BlendProfile, CsgOp, Document, EdgeQuery, Node, NodeId, PathCurve, SketchSegment2D};
 
 /// Convert a [`Document`] to loon source code, also returning names of unsupported variants.
 ///
@@ -343,9 +343,26 @@ fn op_to_loon(op: &CsgOp, doc: &Document) -> OpResult {
             node_ref(*child, doc)
         )),
 
+        CsgOp::EdgeBlend {
+            child,
+            edges: EdgeQuery::Endpoints { a, b },
+            profile: BlendProfile::Constant { size, shape },
+        } => OpResult::Ok(format!(
+            "[edge-blend-between {} {} {} {} {} {} {} {} {}]",
+            fmt_f64(a.x),
+            fmt_f64(a.y),
+            fmt_f64(a.z),
+            fmt_f64(b.x),
+            fmt_f64(b.y),
+            fmt_f64(b.z),
+            fmt_f64(*size),
+            fmt_f64(*shape),
+            node_ref(*child, doc)
+        )),
+
         CsgOp::EdgeBlend { .. } => OpResult::Unsupported(
             "EdgeBlend".to_string(),
-            "query-selected edge blend has no loon syntax yet".to_string(),
+            "this edge selector/profile does not have Loon syntax yet".to_string(),
         ),
 
         CsgOp::Shell { child, thickness } => OpResult::Ok(format!(

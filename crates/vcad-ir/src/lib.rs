@@ -424,6 +424,15 @@ pub enum EdgeQuery {
         /// Selection point in model space.
         point: Vec3,
     },
+    /// The edge whose endpoints match `a` and `b` after kernel topology
+    /// quantization. This is intended for reconstructed geometry where the
+    /// feature recognizer knows the exact sharp edge being restored.
+    Endpoints {
+        /// First edge endpoint in model space.
+        a: Vec3,
+        /// Second edge endpoint in model space.
+        b: Vec3,
+    },
     /// Edges whose direction lies within `tol_deg` degrees of `axis`
     /// (sign ignored) — e.g. `axis = +Z` selects vertical edges.
     Direction {

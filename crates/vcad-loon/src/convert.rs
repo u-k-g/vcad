@@ -557,6 +557,7 @@ fn is_solid_tag(tag: &str) -> bool {
             | "Shell"
             | "Fillet"
             | "Chamfer"
+            | "EdgeBlendBetween"
             | "LinearPattern"
             | "CircularPattern"
             | "SweepLine"
@@ -1539,6 +1540,21 @@ impl ConvertCtx {
                     distance: self.f64_val(&fields[1])?,
                 }
             }
+            "EdgeBlendBetween" => {
+                assert_fields(tag, fields, 9)?;
+                let child = self.convert_solid(&fields[0])?;
+                CsgOp::EdgeBlend {
+                    child,
+                    edges: vcad_ir::EdgeQuery::Endpoints {
+                        a: self.vec3(fields, 1)?,
+                        b: self.vec3(fields, 4)?,
+                    },
+                    profile: vcad_ir::BlendProfile::Constant {
+                        size: self.f64_val(&fields[7])?,
+                        shape: self.f64_val(&fields[8])?,
+                    },
+                }
+            }
 
             // Patterns
             "LinearPattern" => {
@@ -1754,6 +1770,39 @@ mod tests {
                 assert_eq!(size.z, 30.0);
             }
             _ => panic!("expected Cube"),
+        }
+    }
+
+    #[test]
+    fn endpoint_edge_blend_to_document() {
+        let cube = adt("Cube", vec![f(10.0), f(20.0), f(30.0)]);
+        let blend = adt(
+            "EdgeBlendBetween",
+            vec![
+                cube,
+                f(0.0),
+                f(0.0),
+                f(0.0),
+                f(0.0),
+                f(0.0),
+                f(30.0),
+                f(2.0),
+                f(1.0),
+            ],
+        );
+        let doc = value_to_document(&blend).unwrap();
+        assert_eq!(doc.roots.len(), 1);
+        match &doc.nodes[&1].op {
+            CsgOp::EdgeBlend {
+                edges: vcad_ir::EdgeQuery::Endpoints { a, b },
+                profile: vcad_ir::BlendProfile::Constant { size, shape },
+                ..
+            } => {
+                assert_eq!((a.x, a.y, a.z), (0.0, 0.0, 0.0));
+                assert_eq!((b.x, b.y, b.z), (0.0, 0.0, 30.0));
+                assert_eq!((*size, *shape), (2.0, 1.0));
+            }
+            other => panic!("expected endpoint EdgeBlend, got {other:?}"),
         }
     }
 

@@ -398,7 +398,6 @@ function getPartIcon(part: PartInfo): typeof Cube {
   if (part.kind === "sweep") return Spiral;
   if (part.kind === "loft") return Stack;
   if (part.kind === "imported-mesh") return Package;
-  if (part.kind === "step-import") return Package;
   if (part.kind === "fillet") return Circle;
   if (part.kind === "chamfer") return Octagon;
   if (part.kind === "shell") return CubeTransparent;
@@ -1143,6 +1142,21 @@ export function FeatureTree() {
   // Check if this is an assembly document
   const hasInstances = document.instances && document.instances.length > 0;
 
+  // `parts` contains the full materialized construction history. Only scene
+  // roots are independent bodies; boolean operands and feature inputs belong
+  // beneath those roots. Showing every history item at depth zero made a
+  // one-body reconstructed import look like dozens of separate parts.
+  const topLevelParts = useMemo(() => {
+    const rootNodeIds = new Set(document.roots.map((root) => root.root));
+    const rooted = parts.filter((part) => rootNodeIds.has(part.translateNodeId));
+    if (rooted.length > 0) return rooted;
+
+    // Older documents can lack the transform-node/root correspondence. The
+    // consumed map still tells us which items are construction operands.
+    const unconsumed = parts.filter((part) => consumedParts[part.id] === undefined);
+    return unconsumed.length > 0 ? unconsumed : parts;
+  }, [consumedParts, document.roots, parts]);
+
   // Drag and drop sensors
   const sensors = useSensors(
     // Mouse: 8px movement triggers a drag (lets click/select still work)
@@ -1160,7 +1174,7 @@ export function FeatureTree() {
   );
 
   // Part IDs for sortable context
-  const partIds = useMemo(() => parts.map((p) => p.id), [parts]);
+  const partIds = useMemo(() => topLevelParts.map((p) => p.id), [topLevelParts]);
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(event.active.id as string);
@@ -1172,8 +1186,8 @@ export function FeatureTree() {
 
     if (!over || active.id === over.id) return;
 
-    const oldIndex = parts.findIndex((p) => p.id === active.id);
-    const newIndex = parts.findIndex((p) => p.id === over.id);
+    const oldIndex = topLevelParts.findIndex((p) => p.id === active.id);
+    const newIndex = topLevelParts.findIndex((p) => p.id === over.id);
 
     if (oldIndex !== -1 && newIndex !== -1) {
       reorderPart(active.id as string, newIndex);
@@ -1181,7 +1195,7 @@ export function FeatureTree() {
   }
 
   // Get the active part for drag overlay
-  const activePart = activeId ? parts.find((p) => p.id === activeId) : null;
+  const activePart = activeId ? topLevelParts.find((p) => p.id === activeId) : null;
 
   useEffect(() => {
     function handleRename() {
@@ -1221,7 +1235,7 @@ export function FeatureTree() {
   // Always show if feature tree is open - scene section is always available
   if (!featureTreeOpen) return null;
 
-  const hasGeometry = hasInstances || parts.length > 0;
+  const hasGeometry = hasInstances || topLevelParts.length > 0;
 
   return (
     <div
@@ -1275,7 +1289,7 @@ export function FeatureTree() {
                       <div className="text-[10px] font-medium uppercase tracking-wider text-text-muted/70 px-2 pt-1">
                         Parts
                       </div>
-                      {parts.map((part) => (
+                      {topLevelParts.map((part) => (
                         <SortableTreeNode
                           key={part.id}
                           id={part.id}

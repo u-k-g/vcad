@@ -3,17 +3,19 @@ import { invoke, isTauri } from "@/lib/tauri";
 export interface CadReconstructionResult {
   loonSource: string;
   axis: "x" | "y" | "z";
-  layers: number;
+  featureCount: number;
+  bodyCount: number;
   sourceVolume: number;
   reconstructedVolume: number;
   relativeVolumeError: number;
-  faceCount: number;
-  outputParts: number;
+  sourceTriangles: number;
   decimalPlaces: number;
   simplificationTolerance: number;
-  inputSegments: number;
   outputSegments: number;
   recoveredArcs: number;
+  fillets: number;
+  chamfers: number;
+  maxProfileDeviation: number;
 }
 
 export interface CadReconstructionOptions {
@@ -38,15 +40,17 @@ export async function reconstructCadToLoon(
   buffer: ArrayBuffer,
   sourceName: string,
   options: CadReconstructionOptions,
+  sourcePath?: string,
 ): Promise<CadReconstructionResult> {
   if (!isTauri()) {
     throw new Error(
-      "Native BREP/STEP/STL/OBJ/3MF reconstruction is desktop-only",
+      "Native CAD/mesh reconstruction is desktop-only",
     );
   }
   return invoke<CadReconstructionResult>("reconstruct_cad_to_loon", {
     dataBase64: arrayBufferToBase64(buffer),
     sourceName,
+    sourcePath: sourcePath ?? null,
     decimalPlaces: options.decimalPlaces,
     simplificationTolerance: options.simplificationTolerance,
   });

@@ -1,0 +1,31 @@
+[package]
+name = "vcad-kernel-reconstruct"
+description = "Fail-closed native feature reconstruction from CAD exchange files and triangle meshes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+base64 = { workspace = true }
+cxx = "1"
+geo = "0.29"
+gltf = { workspace = true }
+opencascade-sys = "0.2"
+ply-rs = "0.1"
+quick-xml = "0.37"
+serde = { workspace = true }
+serde_json = { workspace = true }
+stl_io = "0.8"
+tempfile = "3"
+thiserror = { workspace = true }
+urlencoding = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[build-dependencies]
+cxx-build = "1"
+occt-sys = "0.2"
+
+[dev-dependencies]
+approx = "0.5"
