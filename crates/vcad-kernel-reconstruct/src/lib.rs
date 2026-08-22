@@ -243,6 +243,29 @@ f 4 1 5 8
     }
 
     #[test]
+    fn reports_volume_mismatch_without_refusing_native_geometry() {
+        // Preserve a closed cube's topology but reverse one cap. This makes
+        // the source mesh's signed-volume estimate disagree substantially
+        // with the recovered solid without preventing feature recognition.
+        let inconsistent_winding = std::str::from_utf8(CUBE_OBJ)
+            .unwrap()
+            .replace("f 5 6 7 8", "f 8 7 6 5");
+        let reconstruction = reconstruct(
+            inconsistent_winding.as_bytes(),
+            "inconsistent.obj",
+            ReconstructionOptions {
+                decimal_places: 4,
+                tolerance: 0.001,
+            },
+        )
+        .expect("volume disagreement must remain advisory");
+
+        assert_eq!(reconstruction.report.body_count, 1);
+        assert!(reconstruction.report.relative_volume_error > 0.1);
+        assert_eq!(reconstruction.loon_source.matches("[root ").count(), 1);
+    }
+
+    #[test]
     fn reconstructs_new_triangle_containers_as_native_bodies() {
         for (data, name) in [
             (CUBE_PLY, "cube.ply"),

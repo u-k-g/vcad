@@ -528,11 +528,25 @@ export function App() {
         await flushPendingSave();
         useDocumentStore.getState().loadDocument(vcadFile);
         useUiStore.getState().clearSelection();
+        const volumeErrorPercent = result.relativeVolumeError * 100;
+        const volumeErrorText =
+          volumeErrorPercent === 0
+            ? "0"
+            : volumeErrorPercent < 0.00001
+              ? volumeErrorPercent.toExponential(2)
+              : volumeErrorPercent.toFixed(5);
+        const volumeWarningThreshold = Math.max(
+          result.simplificationTolerance * 2e-3,
+          2e-5,
+        );
+        const hasMaterialVolumeDifference =
+          result.relativeVolumeError > volumeWarningThreshold;
         useNotificationStore
           .getState()
           .addToast(
-            `Reconstructed ${result.sourceTriangles.toLocaleString()} source triangles as ${result.bodyCount} native body with ${result.featureCount} features, including ${result.recoveredArcs} analytical arcs`,
-            "success",
+            `Reconstructed ${result.sourceTriangles.toLocaleString()} source triangles as ${result.bodyCount} native ${result.bodyCount === 1 ? "body" : "bodies"} with ${result.featureCount} features and ${result.recoveredArcs} analytical arcs. Volume difference: ${volumeErrorText}%.`,
+            hasMaterialVolumeDifference ? "warning" : "success",
+            hasMaterialVolumeDifference ? 8000 : 4000,
           );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

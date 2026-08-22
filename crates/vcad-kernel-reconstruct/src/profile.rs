@@ -103,13 +103,6 @@ pub(crate) fn reconstruct_feature_model(
     let source_volume = mesh.volume();
     let relative_volume_error =
         (reconstructed_volume - source_volume).abs() / source_volume.max(1.0);
-    let allowed_volume_error = (options.tolerance * 2.0e-3).max(2.0e-5);
-    if relative_volume_error > allowed_volume_error {
-        return Err(ReconstructionError::UnresolvedFeatures(format!(
-            "section topology does not reproduce the source volume ({:.5}% error); refusing to emit inaccurate geometry",
-            relative_volume_error * 100.0
-        )));
-    }
 
     let base_index = choose_base_profile(&sections, options.tolerance);
     let overall_low = sections.first().expect("non-empty sections").low;
