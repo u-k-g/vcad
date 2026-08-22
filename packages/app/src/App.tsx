@@ -479,8 +479,6 @@ export function App() {
     }
 
     const nativeReconstructionExtension =
-      ext === "brep" ||
-      ext === "brp" ||
       ext === "step" ||
       ext === "stp" ||
       ext === "stl" ||
@@ -494,7 +492,7 @@ export function App() {
     const reconstructNativeCad =
       nativeReconstructionExtension && (await import("@/lib/tauri")).isTauri();
 
-    // BREP/STEP geometry and supported watertight meshes are reverse-engineered by
+    // STEP geometry and supported watertight meshes are reverse-engineered by
     // VCAD's in-process Rust recognizer into native Loon operations.
     // The source file is neither retained nor embedded: supported solids
     // become a spanning base extrusion plus local additions/cuts. Recognition is
@@ -1262,7 +1260,7 @@ export function App() {
         <div className="mt-1 text-sm text-text-muted">
           {isDraggingImage
             ? "I'll attach it to chat — describe what you want me to build"
-            : ".vcad, STEP, BREP, STL, OBJ, 3MF, PLY, glTF, OFF, AMF"}
+            : ".vcad, STEP, STL, OBJ, 3MF, PLY, glTF, OFF, AMF"}
         </div>
       </div>
     </div>
@@ -1361,7 +1359,7 @@ export function App() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".vcad,.loon,.json,.brep,.brp,.step,.stp,.stl,.obj,.3mf,.ply,.glb,.gltf,.off,.amf,.urdf,.pes,.dst,.kicad_pcb"
+          accept=".vcad,.loon,.json,.step,.stp,.stl,.obj,.3mf,.ply,.glb,.gltf,.off,.amf,.urdf,.pes,.dst,.kicad_pcb"
           className="hidden"
           onChange={handleFileChange}
         />

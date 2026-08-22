@@ -21,7 +21,6 @@ pub(crate) fn parse(
         SourceFormat::Gltf => crate::scene_formats::parse_gltf(data, resource_dir)?,
         SourceFormat::Off => crate::mesh_formats::parse_off(data)?,
         SourceFormat::Amf => crate::mesh_formats::parse_amf(data)?,
-        SourceFormat::Brep => crate::occ::parse_brep(data)?,
     };
     // STEP faces are tessellated independently and meet with small f32 seam
     // noise. A 0.1 micron weld closes those representational seams while

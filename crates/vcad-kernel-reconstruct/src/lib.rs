@@ -40,8 +40,6 @@ pub enum SourceFormat {
     Off,
     /// Additive Manufacturing Format (`.amf`).
     Amf,
-    /// OpenCascade textual BREP (`.brep` or `.brp`).
-    Brep,
 }
 
 impl SourceFormat {
@@ -60,7 +58,6 @@ impl SourceFormat {
             "glb" | "gltf" => Ok(Self::Gltf),
             "off" => Ok(Self::Off),
             "amf" => Ok(Self::Amf),
-            "brep" | "brp" => Ok(Self::Brep),
             _ => Err(ReconstructionError::UnsupportedFormat(extension)),
         }
     }
@@ -281,10 +278,17 @@ f 4 1 5 8
             "shape.gltf",
             "shape.off",
             "shape.amf",
-            "shape.brep",
-            "shape.brp",
         ] {
             assert!(SourceFormat::from_filename(name).is_ok(), "{name}");
+        }
+    }
+
+    #[test]
+    fn rejects_removed_brep_container_extensions() {
+        use super::SourceFormat;
+
+        for name in ["shape.brep", "shape.brp"] {
+            assert!(SourceFormat::from_filename(name).is_err(), "{name}");
         }
     }
 }

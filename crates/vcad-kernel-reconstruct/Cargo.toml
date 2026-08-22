@@ -9,7 +9,6 @@ publish = false
 
 [dependencies]
 base64 = { workspace = true }
-cxx = "1"
 geo = "0.29"
 gltf = { workspace = true }
 opencascade-sys = "0.2"
@@ -22,10 +21,6 @@ tempfile = "3"
 thiserror = { workspace = true }
 urlencoding = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
-
-[build-dependencies]
-cxx-build = "1"
-occt-sys = "0.2"
 
 [dev-dependencies]
 approx = "0.5"

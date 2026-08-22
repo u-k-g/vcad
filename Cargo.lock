@@ -8006,11 +8006,8 @@ version = "0.9.4"
 dependencies = [
  "approx",
  "base64 0.22.1",
- "cxx",
- "cxx-build",
  "geo 0.29.3",
  "gltf",
- "occt-sys",
  "opencascade-sys",
  "ply-rs",
  "quick-xml 0.37.5",

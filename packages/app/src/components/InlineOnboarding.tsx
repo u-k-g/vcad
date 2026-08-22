@@ -193,7 +193,7 @@ export function InlineOnboarding({ visible }: InlineOnboardingProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".vcad,.loon,.json,.brep,.brp,.step,.stp,.stl,.obj,.3mf,.ply,.glb,.gltf,.off,.amf"
+          accept=".vcad,.loon,.json,.step,.stp,.stl,.obj,.3mf,.ply,.glb,.gltf,.off,.amf"
           onChange={handleFileChange}
           className="hidden"
         />

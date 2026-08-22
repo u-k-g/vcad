@@ -1,46 +1,13 @@
-//! Narrow in-process OpenCascade bridge for decoding exchange BReps.
+//! In-process OpenCascade STEP decoding and face tessellation.
 //!
-//! OCCT is only used to decode and tessellate its native BREP container (and
-//! STEP files whose independent VCAD face tessellation does not sew). Feature
-//! recognition and all emitted VCAD/Loon geometry remain implemented in Rust.
+//! Feature recognition and all emitted VCAD/Loon geometry remain implemented
+//! in Rust. OpenCascade's native BREP container is intentionally unsupported.
 
 use std::io::Write;
 
 use opencascade_sys::ffi as occ;
 
 use crate::{Mesh, ReconstructionError, Triangle};
-
-#[cxx::bridge(namespace = "vcad_reconstruct")]
-mod bridge {
-    unsafe extern "C++" {
-        include!("occ_bridge.hxx");
-
-        #[namespace = ""]
-        type TopoDS_Shape = opencascade_sys::ffi::TopoDS_Shape;
-
-        fn read_brep(path: &str) -> UniquePtr<TopoDS_Shape>;
-    }
-}
-
-pub(crate) fn parse_brep(data: &[u8]) -> Result<Mesh, ReconstructionError> {
-    let mut file = tempfile::Builder::new()
-        .prefix("vcad-reconstruct-")
-        .suffix(".brep")
-        .tempfile()
-        .map_err(|error| parse_error("BREP", error))?;
-    file.write_all(data)
-        .and_then(|_| file.flush())
-        .map_err(|error| parse_error("BREP", error))?;
-    let path = file.path().to_string_lossy();
-    let shape = bridge::read_brep(&path);
-    if shape.is_null() {
-        return Err(ReconstructionError::Parse {
-            format: "BREP",
-            detail: "OpenCascade rejected the topology stream".into(),
-        });
-    }
-    tessellate_shape(shape.as_ref().expect("checked non-null"), "BREP")
-}
 
 pub(crate) fn parse_step(data: &[u8]) -> Result<Mesh, ReconstructionError> {
     let mut file = tempfile::Builder::new()

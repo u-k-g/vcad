@@ -12,8 +12,6 @@ import { isTauri } from "@/lib/tauri";
 const RECENT_FILES_KEY = "vcad:recentFiles";
 const RECENT_FILES_MAX = 10;
 const NATIVE_RECONSTRUCTION_EXTENSIONS = new Set([
-  "brep",
-  "brp",
   "step",
   "stp",
   "stl",
@@ -111,7 +109,6 @@ export async function openDocumentNative(): Promise<{
     filters: [
       { name: "vcad", extensions: ["vcad", "loon", "json"] },
       { name: "STEP", extensions: ["step", "stp"] },
-      { name: "OpenCASCADE BREP", extensions: ["brep", "brp"] },
       { name: "STL", extensions: ["stl"] },
       { name: "Wavefront OBJ", extensions: ["obj"] },
       { name: "3MF", extensions: ["3mf"] },
